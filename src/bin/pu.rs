@@ -9,10 +9,10 @@ use color_eyre::eyre::Result;
 static MI_B: f32 = 2u64.pow(20) as f32;
 
 #[derive(Parser)]
-#[command(version, about, long_about = None)]
+#[command(version, about)]
 /// Run a command, monitoring CPU and RAM usage at regular intervals and saving to a CSV file.
 struct Cli {
-    /// Verbose mode (three levels: -v, -vv, -vvv)
+    /// Verbose mode (-v, -vv, -vvv)
     #[structopt(short, long, action = clap::ArgAction::Count)]
     verbose: u8,
 
@@ -24,7 +24,7 @@ struct Cli {
     #[arg(last = true, required = true)]
     command: Vec<String>,
 
-    /// Output file to save data to
+    /// Output CSV file
     #[structopt(short, long, default_value = "process_usage.csv")]
     file: String,
 }
