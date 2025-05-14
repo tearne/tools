@@ -89,22 +89,12 @@ fn main() -> Result<()> {
         loop{
             std::thread::sleep(pause);
 
-            // sys.refresh_all();
-            // sys.refresh_cpu_usage();
-            // sys.refresh_processes_specifics(
-            //     ProcessesToUpdate::All,
-            //     true,
-            //     ProcessRefreshKind::nothing().with_cpu()
-            // );
-            // sys.refresh_memory();
             sys.refresh_processes_specifics(
                 ProcessesToUpdate::All,
                 true,
                 ProcessRefreshKind::nothing()
                     .with_memory()
                     .with_cpu()
-                    // .with_disk_usage()
-                    // .with_exe(UpdateKind::OnlyIfNotSet)
             );
 
             if let Some(process) = sys.process(pid) {
