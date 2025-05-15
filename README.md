@@ -22,6 +22,6 @@ Generates CSV file `process_usage.csv`:
 |2025-05-12 20:06:30|4|132.1|9.9|789.5|
 |...|...|...|...|...|
 
-The [example Python code](./python/pu/plot.py) shows how to plot with Polars and Seaborn.  The simples way to run it is to instal `uv` (fast Python package manager) and then run the script as an executable `python/pu/plot.py`.
+The [example Python code](./python/pu/plot.py) shows how to plot with Polars and Seaborn.  The simplest way to run it is to instal `uv` (fast Python package manager) and then run the script as an executable `python/pu/plot.py`.
 
 ![graph](./python/pu/seaborn_plot.png)
