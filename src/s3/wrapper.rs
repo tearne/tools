@@ -1,35 +1,10 @@
+use std::io::Write;
+
 use aws_sdk_s3::{operation::{list_object_versions::ListObjectVersionsOutput, list_objects_v2::ListObjectsV2Output}, types::{BucketVersioningStatus, Delete, Object, ObjectIdentifier, ObjectVersion}, Client};
-use human_format::{Formatter, Scales};
-use regex::Regex;
+use human_format::Formatter;
+
 use tokio::runtime::Handle;
-use color_eyre::{eyre::eyre, eyre::OptionExt, Result};
-
-
-pub struct S3Path{
-    pub bucket: String,
-    pub prefix: String,
-}
-impl S3Path{
-    pub fn parse(url: &str) -> Result<S3Path>{
-        let s3_path_re = Regex::new(
-                // https://regex101.com/r/wAmOQU/1
-                r#"^([Ss]3://)?(?P<bucket>[^/]*)(?P<prefix>[\w/.-]*)$"#,
-            )?;
-
-            let captures = s3_path_re
-                .captures(url)
-                .ok_or_else(|| eyre!("No regex matches"))?;
-            let bucket = captures.name("bucket").unwrap().as_str().to_string();
-            let prefix = captures
-                .name("prefix")
-                .unwrap()
-                .as_str();
-            let prefix = prefix.strip_prefix('/').unwrap_or(prefix);
-            let prefix = prefix.strip_suffix('/').unwrap_or(prefix).to_string();
-
-        Ok(S3Path{ bucket, prefix })
-    }
-}
+use color_eyre::{eyre::OptionExt, Result};
 
 pub struct S3Wrapper {
     pub handle: Handle,
@@ -124,13 +99,18 @@ impl S3Wrapper {
         let mut formatter = Formatter::new();
         formatter.with_decimals(1);
 
+        print!("Requesting version pages ");
+        let mut h = std::io::stdout();
         loop {
+            write!(h, "." ).unwrap();
+            h.flush().unwrap();
+
             let out = next_page(&self.client, bucket, prefix, next_key, next_version).await?;
 
             next_key = out.next_key_marker.clone().map(String::from);
             next_version = out.next_version_id_marker.clone().map(String::from);
-
             acc.push(out);
+
             let records_so_far = acc.iter().map(|v|v.versions().len()).sum::<usize>();
             if records_so_far - prev_records_counter > 20000 {
                 prev_records_counter = records_so_far;
@@ -141,6 +121,7 @@ impl S3Wrapper {
                 break;
             }
         }
+        println!(" done");
 
         Ok(acc)
     }

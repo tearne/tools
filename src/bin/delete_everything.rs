@@ -2,7 +2,7 @@ use aws_sdk_s3::Client;
 use clap::Parser;
 use color_eyre::Result;
 use tokio::runtime::Runtime;
-use tools::{log::setup_logging, s3::S3Wrapper};
+use tools::{log::setup_logging, s3::wrapper::S3Wrapper};
 
 pub use tools as this_crate;
 

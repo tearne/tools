@@ -12,16 +12,14 @@ pub fn setup_logging(level: u8) {
 
         env_logger::builder()
             .filter_level(dep_level)
-            .filter(Some(&prog), local_level)
-            .filter(Some(&crate_name), local_level)
+            .filter_module(&prog, local_level)
+            .filter_module(&crate_name, local_level)            
             .init();
-        println!("Logging set to: {}", local_level);
+        println!("Logging filter level for '{}' and '{}': {}", &prog, crate_name, local_level);
+        println!("Dependency logging filter level: {}", dep_level);
 
-        log::info!("Local executable name detected as {} for logging.", &prog);
-        log::info!("Local crate name detected as {} for logging.", &crate_name);
-
-        log::info!("Local log level set to {}.", local_level);
-        log::info!("Default Log level set to {}.", dep_level);
+        log::info!("Logging filter level for '{}' and '{}': {}", &prog, crate_name, local_level);
+        log::info!("Dependency logging filter level: {}", dep_level);
     }
 
     match level {
