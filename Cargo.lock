@@ -2591,6 +2591,7 @@ dependencies = [
  "env_logger",
  "human_format",
  "log",
+ "regex",
  "serde",
  "sysinfo",
  "tokio",

@@ -1,8 +1,35 @@
 use aws_sdk_s3::{operation::{list_object_versions::ListObjectVersionsOutput, list_objects_v2::ListObjectsV2Output}, types::{BucketVersioningStatus, Delete, Object, ObjectIdentifier, ObjectVersion}, Client};
 use human_format::{Formatter, Scales};
+use regex::Regex;
 use tokio::runtime::Handle;
-use color_eyre::{eyre::OptionExt, Result};
+use color_eyre::{eyre::eyre, eyre::OptionExt, Result};
 
+
+pub struct S3Path{
+    pub bucket: String,
+    pub prefix: String,
+}
+impl S3Path{
+    pub fn parse(url: &str) -> Result<S3Path>{
+        let s3_path_re = Regex::new(
+                // https://regex101.com/r/wAmOQU/1
+                r#"^([Ss]3://)?(?P<bucket>[^/]*)(?P<prefix>[\w/.-]*)$"#,
+            )?;
+
+            let captures = s3_path_re
+                .captures(url)
+                .ok_or_else(|| eyre!("No regex matches"))?;
+            let bucket = captures.name("bucket").unwrap().as_str().to_string();
+            let prefix = captures
+                .name("prefix")
+                .unwrap()
+                .as_str();
+            let prefix = prefix.strip_prefix('/').unwrap_or(prefix);
+            let prefix = prefix.strip_suffix('/').unwrap_or(prefix).to_string();
+
+        Ok(S3Path{ bucket, prefix })
+    }
+}
 
 pub struct S3Wrapper {
     pub handle: Handle,
