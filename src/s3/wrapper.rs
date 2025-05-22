@@ -1,10 +1,10 @@
-use std::io::Write;
+use std::{fs::DirEntry, io::Write, path::Path};
 
-use aws_sdk_s3::{operation::{list_object_versions::ListObjectVersionsOutput, list_objects_v2::ListObjectsV2Output}, types::{BucketVersioningStatus, Delete, Object, ObjectIdentifier, ObjectVersion}, Client};
+use aws_sdk_s3::{operation::{list_object_versions::ListObjectVersionsOutput, list_objects_v2::ListObjectsV2Output}, primitives::{ByteStream, SdkBody}, types::{BucketVersioningStatus, Delete, Object, ObjectIdentifier, ObjectVersion}, Client};
 use human_format::Formatter;
 
 use tokio::runtime::Handle;
-use color_eyre::{eyre::OptionExt, Result};
+use color_eyre::{eyre::{eyre, Context, OptionExt}, Result};
 
 pub struct S3Wrapper {
     pub handle: Handle,
@@ -175,6 +175,69 @@ impl S3Wrapper {
             }
 
             Ok(())
+        })
+    }
+
+    fn put_recursive(&self, path: &Path, bucket: &str, key: &str) {
+        fn visit_dirs(dir: &Path, cb: &dyn Fn(&DirEntry)) -> std::io::Result<()> {
+            if dir.is_dir() {
+                for entry in std::fs::read_dir(dir)? {
+                    let entry = entry?;
+                    let path = entry.path();
+                    if path.is_dir() {
+                        visit_dirs(&path, cb)?;
+                    } else {
+                        cb(&entry);
+                    }
+                }
+            }
+            Ok(())
+        }
+
+        let prefix = Path::new(prefix);
+
+        let uploader = |de: &DirEntry| {
+            let absolute_path = de.path();
+            let stripped_path = absolute_path.strip_prefix(abs_project_path).unwrap();
+            let object_name = prefix.join(stripped_path).to_string_lossy().into_owned();
+            let file_contents = std::fs::read_to_string(&absolute_path).unwrap();
+            self.put_object(&object_name, &file_contents);
+        };
+        visit_dirs(abs_project_path, &uploader).unwrap();
+    }
+
+    pub fn put_string_object(&self, bucket: &str, key: &str, body: &str) {
+        let bytes = ByteStream::from(SdkBody::from(body.to_string()));
+
+        self.handle.block_on(async {
+            self.client
+                .put_object()
+                .bucket(bucket)
+                .key(key)
+                .body(bytes)
+                .send()
+                .await
+                .unwrap()
+        });
+    }
+
+    fn get_utf8_object(&self, bucket: &str, key: &str) -> Result<String> {
+        self.handle.block_on(async {
+            let bytes = self
+                .client
+                .get_object()
+                .bucket(bucket)
+                .key(key)
+                .send()
+                .await?
+                .body
+                .try_next()
+                .await?
+                .ok_or_else(||eyre!("No bytes read from {}/{}", bucket, key))?;
+
+            std::str::from_utf8(&bytes)
+                .map(|t|t.to_string())
+                .with_context(||"converting to utf8")
         })
     }
 }
