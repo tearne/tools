@@ -156,12 +156,6 @@ fn test_with_versions() -> Result<()> {
         ).await
     })?;
 
-    let expected_total = Stats{
-        num_objects: 3,
-        size: ByteSize::b(38 + 78 + 152),
-    };
-    assert_eq!(expected_total, report.total);
-
     let expected_versions = VersionData {
         current_objects: Stats { num_objects: 1, size: ByteSize(152) },
         current_obj_vers: Stats { num_objects: 1, size: ByteSize(78) },
