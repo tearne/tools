@@ -6,8 +6,6 @@ use tools::{log::setup_logging, s3::wrapper::S3Wrapper};
 
 pub use tools as this_crate;
 
-
-
 #[derive(Parser, Debug)]
 #[command(version, about)]
 struct Cli {
@@ -28,7 +26,6 @@ fn main() -> Result<()> {
     let cli = Cli::parse();
     setup_logging(cli.verbose);
     let runtime = Runtime::new().unwrap();
-    let handle = runtime.handle().clone();
 
     runtime.block_on(async {
         let config = aws_config::load_from_env().await;

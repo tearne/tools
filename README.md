@@ -1,14 +1,31 @@
-# Process Usage (`pu`)
+# Overview
+
+Two things
+* `pu`: Tool to monitor **p**rocess **u**sage (CPU & RAM) over time and save to CSV file.
+* `s3util`: Primarily to report of size of S3 buckets, including object versions.
 
 ## Installation
 
 1. [Install Rust](https://rustup.rs/)
 1. Close and reopen your terminal so your path is updated.
-1. Install application: `cargo install --git https://github.com/tearne/tools --locked --bin pu`
+1. Install the application you want.  For example, for `s3util`: `cargo install --git https://github.com/tearne/tools --locked --bin s3util`
 
 This will install to `/home/[username]/.cargo/bin/`.
 
-## Example
+## `s3util` examples
+Tool assumes you're using an instance profile, can't configure credentials manually at the moment.
+
+Report the size of a single bucket to stdout:
+```
+s3util -v size -u my-bucket
+```
+
+Report the size of several buckets to a CSV file (defaults to `bucket_usage.csv`):
+```
+s3util -v size-report -u my-bucket,your-bucket,another-bucket
+```
+
+## `pu` example
 ```
 pu -- start_my_minecraft_server.sh
 ```

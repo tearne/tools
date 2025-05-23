@@ -1,12 +1,10 @@
-use std::{fs::DirEntry, io::Write, path::Path};
+use std::io::Write;
 
-use aws_sdk_s3::{operation::{list_object_versions::ListObjectVersionsOutput, list_objects_v2::ListObjectsV2Output}, primitives::{ByteStream, SdkBody}, types::{BucketVersioningStatus, Delete, Object, ObjectIdentifier, ObjectVersion}, Client};
+use aws_sdk_s3::{operation::{list_object_versions::ListObjectVersionsOutput, list_objects_v2::ListObjectsV2Output}, types::{BucketVersioningStatus, Delete, Object, ObjectIdentifier, ObjectVersion}, Client};
 use human_format::Formatter;
 
-use tokio::runtime::Handle;
-use color_eyre::{eyre::{eyre, Context, OptionExt}, Result};
+use color_eyre::{eyre::OptionExt, Result};
 
-use super::types::S3Location;
 
 pub struct S3Wrapper {
     pub client: Client
@@ -177,78 +175,5 @@ impl S3Wrapper {
         }
 
         Ok(())
-    }
-
-    // async fn recursive_upload_helper(&self, de: &DirEntry, abs_path: &Path, bucket: &str, prefix: &str) -> Result<()> {
-    //     let item_path = de.path();
-    //     let stripped_path = item_path.strip_prefix(&abs_path).unwrap();
-    //     let key = format!("{}/{}", prefix, stripped_path.to_string_lossy());
-    //     //TODO don't restrict to string data
-    //     let file_contents = std::fs::read_to_string(&item_path).unwrap();
-    //     self.put_string_object(bucket, &key, &file_contents).await?;
-    //     Ok(())
-    // }
-
-    // pub async fn put_string_recursive(&self, path: &Path, bucket: &str, prefix: &str) -> Result<()> {
-    //     let abs_path = std::path::absolute(path)?;
-
-    //     async fn visit_dirs(dir: &Path, abs_path: &Path, bucket: &str, prefix: &str) -> std::io::Result<()> {
-    //         if dir.is_dir() {
-    //             for entry in std::fs::read_dir(dir)? {
-    //                 let entry = entry?;
-    //                 let path = entry.path();
-    //                 if path.is_dir() {
-    //                     visit_dirs(&path, abs_path, bucket, prefix).await?;
-    //                 } else {
-    //                     self.recursive_upload_helper(&entry, &abs_path, bucket, prefix).await?;
-    //                 }
-    //             }
-    //         }
-    //         Ok(())
-    //     }
-
-    //     // let uploader = |de: &DirEntry| {
-    //     //     let item_path = de.path();
-    //     //     let stripped_path = item_path.strip_prefix(&abs_path).unwrap();
-    //     //     let key = format!("{}/{}", prefix, stripped_path.to_string_lossy());
-    //     //     //TODO don't restrict to string data
-    //     //     let file_contents = std::fs::read_to_string(&item_path).unwrap();
-    //     //     self.put_string_object(bucket, &key, &file_contents).await?;
-    //     // };
-    //     visit_dirs(&abs_path, &abs_path, bucket, prefix).await.unwrap();
-
-    //     Ok(())
-    // }
-
-    // pub async fn put_string_object(&self, bucket: &str, key: &str, body: &str) -> Result<()> {
-    //     let bytes = ByteStream::from(SdkBody::from(body.to_string()));
-
-    //     let _ = self.client
-    //         .put_object()
-    //         .bucket(bucket)
-    //         .key(key)
-    //         .body(bytes)
-    //         .send()
-    //         .await?;
-
-    //     Ok(())
-    // }
-
-    async fn get_utf8_object(&self, bucket: &str, key: &str) -> Result<String> {
-            let bytes = self
-                .client
-                .get_object()
-                .bucket(bucket)
-                .key(key)
-                .send()
-                .await?
-                .body
-                .try_next()
-                .await?
-                .ok_or_else(||eyre!("No bytes read from {}/{}", bucket, key))?;
-
-            std::str::from_utf8(&bytes)
-                .map(|t|t.to_string())
-                .with_context(||"converting to utf8")
     }
 }
