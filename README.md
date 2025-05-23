@@ -24,7 +24,7 @@ bu size --url my-bucket/somePrefix
 
 Report the size of several buckets/prefixes to a CSV file (defaults to `bucket_usage.csv`):
 ```
-bu size-report --url my-bucket/somePrefix,your-bucket,another-bucket
+bu size-report --urls my-bucket/somePrefix,your-bucket,another-bucket
 ```
 
 ## `pu` example
