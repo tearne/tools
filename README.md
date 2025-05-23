@@ -20,9 +20,9 @@ Report the size of a single bucket/prefix to stdout:
 bu -v size -u my-bucket/somePrefix
 ```
 
-Report the size of several buckets to a CSV file (defaults to `bucket_usage.csv`):
+Report the size of several buckets/prefixes to a CSV file (defaults to `bucket_usage.csv`):
 ```
-bu -v size-report -u my-bucket,your-bucket,another-bucket
+bu -v size-report -u my-bucket/somePrefix,your-bucket,another-bucket
 ```
 
 ## `pu` example
