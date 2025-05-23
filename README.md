@@ -1,10 +1,9 @@
 # Overview
-
-Two things
+Two useful things
 * `pu`: Tool to monitor **p**rocess **u**sage (CPU & RAM) over time and save to CSV file.
 * `bu`: An S3 **b**ucket **u**tility to report on size including object versions.
 
-## Installation
+# Installation
 
 1. [Install Rust](https://rustup.rs/)
 1. Close and reopen your terminal to update your path.
@@ -12,7 +11,7 @@ Two things
 
 This will install to `/home/[username]/.cargo/bin/`.
 
-## `bu` examples
+# `bu` examples
 Tool assumes you're using an instance profile, can't configure credentials manually at the moment.
 
 Report the size of a single bucket/prefix to stdout:
@@ -27,7 +26,7 @@ Report the size of several buckets/prefixes to a CSV file (defaults to `bucket_u
 bu size-report --urls my-bucket/somePrefix,your-bucket,another-bucket
 ```
 
-## `pu` example
+# `pu` example
 ```
 pu -- start_my_minecraft_server.sh
 ```
