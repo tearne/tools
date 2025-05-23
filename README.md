@@ -17,12 +17,14 @@ Tool assumes you're using an instance profile, can't configure credentials manua
 
 Report the size of a single bucket/prefix to stdout:
 ```
-bu -v size -u my-bucket/somePrefix
+bu size -u my-bucket/somePrefix
 ```
+> s3://my-bucket/somePrefix:  
+9.6 GiB (current obj. 1.1 GiB, current vers. 0 B, orphaned vers. 8.5 GiB)
 
 Report the size of several buckets/prefixes to a CSV file (defaults to `bucket_usage.csv`):
 ```
-bu -v size-report -u my-bucket/somePrefix,your-bucket,another-bucket
+bu size-report -u my-bucket/somePrefix,your-bucket,another-bucket
 ```
 
 ## `pu` example
