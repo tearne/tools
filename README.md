@@ -8,7 +8,7 @@ Two things
 
 1. [Install Rust](https://rustup.rs/)
 1. Close and reopen your terminal to update your path.
-1. Install the application you want.  For example, for `s3util`: `cargo install --git https://github.com/tearne/tools --locked --bin s3util`
+1. Install the application you want.  For example, for `bu`: `cargo install --git https://github.com/tearne/tools --locked --bin bu`
 
 This will install to `/home/[username]/.cargo/bin/`.
 
