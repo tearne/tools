@@ -6,14 +6,15 @@ use human_format::Formatter;
 use tokio::runtime::Handle;
 use color_eyre::{eyre::{eyre, Context, OptionExt}, Result};
 
+use super::types::S3Location;
+
 pub struct S3Wrapper {
-    pub handle: Handle,
     pub client: Client
 }
 
 impl S3Wrapper {
-    pub async fn get_object_versions(&self, bucket: &str, prefix: &str) -> Result<Vec<ObjectVersion>> {
-        let pages = self.get_versions(bucket, prefix).await.unwrap();
+    pub async fn get_object_versions(&self, bucket: &str, prefix: &str, verbose: bool) -> Result<Vec<ObjectVersion>> {
+        let pages = self.get_versions(bucket, prefix, verbose).await.unwrap();
         let object_versions: Vec<ObjectVersion> = pages.into_iter()
             .flat_map(|page|
                 page.versions.unwrap_or_default())
@@ -72,7 +73,7 @@ impl S3Wrapper {
     }
 
     // TODO combine with pub above?
-    async fn get_versions(&self, bucket: &str, prefix: &str) -> Result<Vec<ListObjectVersionsOutput>> {
+    async fn get_versions(&self, bucket: &str, prefix: &str, verbose: bool) -> Result<Vec<ListObjectVersionsOutput>> {
         async fn next_page(
             client: &Client,
             bucket: &str,
@@ -99,11 +100,13 @@ impl S3Wrapper {
         let mut formatter = Formatter::new();
         formatter.with_decimals(1);
 
-        print!("Requesting version pages ");
+        if verbose {print!("Requesting version pages ...")};
         let mut h = std::io::stdout();
         loop {
-            write!(h, "." ).unwrap();
-            h.flush().unwrap();
+            if verbose {
+                write!(h, "." ).unwrap();
+                h.flush().unwrap();
+            }
 
             let out = next_page(&self.client, bucket, prefix, next_key, next_version).await?;
 
@@ -126,103 +129,112 @@ impl S3Wrapper {
         Ok(acc)
     }
 
-    pub fn purge_all_versions_of_everything(&self, bucket: &str, prefix: &str) -> Result<()> {
-        self.handle.block_on(async {
-            //TODO
-            // self.assert_versioning_active().await?;
-            let version_pages = self.get_versions(bucket, prefix).await?;
+    pub async fn purge_all_versions_of_everything(&self, bucket: &str, prefix: &str, verbose: bool) -> Result<()> {
+        //TODO
+        // self.assert_versioning_active().await?;
+        let version_pages = self.get_versions(bucket, prefix, verbose).await?;
 
-            for page in version_pages {
-                let mut object_identifiers = Vec::new();
+        for page in version_pages {
+            let mut object_identifiers = Vec::new();
 
-                let object_versions = page.versions.unwrap_or_default();
-                let delete_markers = page.delete_markers.unwrap_or_default();
+            let object_versions = page.versions.unwrap_or_default();
+            let delete_markers = page.delete_markers.unwrap_or_default();
 
-                let it = delete_markers.into_iter().map(|item| {
-                    ObjectIdentifier::builder()
-                        .set_version_id(item.version_id)
-                        .set_key(item.key)
-                        .build()
-                        .unwrap()
-                });
-                object_identifiers.extend(it);
+            let it = delete_markers.into_iter().map(|item| {
+                ObjectIdentifier::builder()
+                    .set_version_id(item.version_id)
+                    .set_key(item.key)
+                    .build()
+                    .unwrap()
+            });
+            object_identifiers.extend(it);
 
-                let it = object_versions.into_iter().map(|item| {
-                    ObjectIdentifier::builder()
-                        .set_version_id(item.version_id)
-                        .set_key(item.key)
-                        .build()
-                        .unwrap()
-                });
-                object_identifiers.extend(it);
+            let it = object_versions.into_iter().map(|item| {
+                ObjectIdentifier::builder()
+                    .set_version_id(item.version_id)
+                    .set_key(item.key)
+                    .build()
+                    .unwrap()
+            });
+            object_identifiers.extend(it);
 
-                if !object_identifiers.is_empty() {
-                    log::info!("Deleting {} identifiers", object_identifiers.len());
-                    self.client
-                        .delete_objects()
-                        .bucket(bucket)
-                        .delete(
-                            Delete::builder()
-                                .set_objects(Some(object_identifiers))
-                                .build()
-                                .unwrap(),
-                        )
-                        .send()
-                        .await?;
-                } else {
-                    log::info!("Nothing to delete")
-                }
+            if !object_identifiers.is_empty() {
+                log::info!("Deleting {} identifiers", object_identifiers.len());
+                self.client
+                    .delete_objects()
+                    .bucket(bucket)
+                    .delete(
+                        Delete::builder()
+                            .set_objects(Some(object_identifiers))
+                            .build()
+                            .unwrap(),
+                    )
+                    .send()
+                    .await?;
+            } else {
+                log::info!("Nothing to delete")
             }
-
-            Ok(())
-        })
-    }
-
-    fn put_recursive(&self, path: &Path, bucket: &str, key: &str) {
-        fn visit_dirs(dir: &Path, cb: &dyn Fn(&DirEntry)) -> std::io::Result<()> {
-            if dir.is_dir() {
-                for entry in std::fs::read_dir(dir)? {
-                    let entry = entry?;
-                    let path = entry.path();
-                    if path.is_dir() {
-                        visit_dirs(&path, cb)?;
-                    } else {
-                        cb(&entry);
-                    }
-                }
-            }
-            Ok(())
         }
 
-        let prefix = Path::new(prefix);
-
-        let uploader = |de: &DirEntry| {
-            let absolute_path = de.path();
-            let stripped_path = absolute_path.strip_prefix(abs_project_path).unwrap();
-            let object_name = prefix.join(stripped_path).to_string_lossy().into_owned();
-            let file_contents = std::fs::read_to_string(&absolute_path).unwrap();
-            self.put_object(&object_name, &file_contents);
-        };
-        visit_dirs(abs_project_path, &uploader).unwrap();
+        Ok(())
     }
 
-    pub fn put_string_object(&self, bucket: &str, key: &str, body: &str) {
-        let bytes = ByteStream::from(SdkBody::from(body.to_string()));
+    // async fn recursive_upload_helper(&self, de: &DirEntry, abs_path: &Path, bucket: &str, prefix: &str) -> Result<()> {
+    //     let item_path = de.path();
+    //     let stripped_path = item_path.strip_prefix(&abs_path).unwrap();
+    //     let key = format!("{}/{}", prefix, stripped_path.to_string_lossy());
+    //     //TODO don't restrict to string data
+    //     let file_contents = std::fs::read_to_string(&item_path).unwrap();
+    //     self.put_string_object(bucket, &key, &file_contents).await?;
+    //     Ok(())
+    // }
 
-        self.handle.block_on(async {
-            self.client
-                .put_object()
-                .bucket(bucket)
-                .key(key)
-                .body(bytes)
-                .send()
-                .await
-                .unwrap()
-        });
-    }
+    // pub async fn put_string_recursive(&self, path: &Path, bucket: &str, prefix: &str) -> Result<()> {
+    //     let abs_path = std::path::absolute(path)?;
 
-    fn get_utf8_object(&self, bucket: &str, key: &str) -> Result<String> {
-        self.handle.block_on(async {
+    //     async fn visit_dirs(dir: &Path, abs_path: &Path, bucket: &str, prefix: &str) -> std::io::Result<()> {
+    //         if dir.is_dir() {
+    //             for entry in std::fs::read_dir(dir)? {
+    //                 let entry = entry?;
+    //                 let path = entry.path();
+    //                 if path.is_dir() {
+    //                     visit_dirs(&path, abs_path, bucket, prefix).await?;
+    //                 } else {
+    //                     self.recursive_upload_helper(&entry, &abs_path, bucket, prefix).await?;
+    //                 }
+    //             }
+    //         }
+    //         Ok(())
+    //     }
+
+    //     // let uploader = |de: &DirEntry| {
+    //     //     let item_path = de.path();
+    //     //     let stripped_path = item_path.strip_prefix(&abs_path).unwrap();
+    //     //     let key = format!("{}/{}", prefix, stripped_path.to_string_lossy());
+    //     //     //TODO don't restrict to string data
+    //     //     let file_contents = std::fs::read_to_string(&item_path).unwrap();
+    //     //     self.put_string_object(bucket, &key, &file_contents).await?;
+    //     // };
+    //     visit_dirs(&abs_path, &abs_path, bucket, prefix).await.unwrap();
+
+    //     Ok(())
+    // }
+
+    // pub async fn put_string_object(&self, bucket: &str, key: &str, body: &str) -> Result<()> {
+    //     let bytes = ByteStream::from(SdkBody::from(body.to_string()));
+
+    //     let _ = self.client
+    //         .put_object()
+    //         .bucket(bucket)
+    //         .key(key)
+    //         .body(bytes)
+    //         .send()
+    //         .await?;
+
+    //     Ok(())
+    // }
+
+    async fn get_utf8_object(&self, bucket: &str, key: &str) -> Result<String> {
             let bytes = self
                 .client
                 .get_object()
@@ -238,6 +250,5 @@ impl S3Wrapper {
             std::str::from_utf8(&bytes)
                 .map(|t|t.to_string())
                 .with_context(||"converting to utf8")
-        })
     }
 }

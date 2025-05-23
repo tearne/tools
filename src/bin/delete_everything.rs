@@ -1,6 +1,6 @@
 use aws_sdk_s3::Client;
 use clap::Parser;
-use color_eyre::Result;
+use color_eyre::{eyre::Error, Result};
 use tokio::runtime::Runtime;
 use tools::{log::setup_logging, s3::wrapper::S3Wrapper};
 
@@ -30,18 +30,17 @@ fn main() -> Result<()> {
     let runtime = Runtime::new().unwrap();
     let handle = runtime.handle().clone();
 
-    let client = {
-        let config = runtime.block_on(
-                aws_config::load_from_env()
-            );
+    runtime.block_on(async {
+        let config = aws_config::load_from_env().await;
 
-            let s3 = S3Wrapper{
-                handle,
-                client: Client::new(&config),
-            };
-
-            s3.purge_all_versions_of_everything(&cli.bucket, &cli.prefix)?;
+        let s3 = S3Wrapper{
+            client: Client::new(&config),
         };
+
+        s3.purge_all_versions_of_everything(&cli.bucket, &cli.prefix, true).await?;
+
+        Ok::<(),Error>(())
+    })?;
 
     Ok(())
 }
