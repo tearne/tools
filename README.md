@@ -15,9 +15,9 @@ This will install to `/home/[username]/.cargo/bin/`.
 ## `bu` examples
 Tool assumes you're using an instance profile, can't configure credentials manually at the moment.
 
-Report the size of a single bucket to stdout:
+Report the size of a single bucket/prefix to stdout:
 ```
-bu -v size -u my-bucket
+bu -v size -u my-bucket/somePrefix
 ```
 
 Report the size of several buckets to a CSV file (defaults to `bucket_usage.csv`):
