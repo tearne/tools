@@ -1,7 +1,13 @@
 # Overview
-Two useful things
-* `pu`: Tool to monitor **p**rocess **u**sage (CPU & RAM) over time and save to CSV file.
-* `bu`: An S3 **b**ucket **u**tility to report on size including object versions.
+## `pu`
+A tool to monitor **p**rocess **u**sage (CPU & RAM) and save time series data to CSV file.
+
+Originally created to retrospectively see if containers were being allocated too much resource, particularly in serverless setups.
+
+## `bu`
+An S3 **b**ucket **u**tility to report on size including object versions.
+
+Created after I was surprised to learn that my bucket with 100 MiB of objects was actually 10 GiB in size, mostly due to versioning and 'object churn'.  The AWS S3 CLI [doesn't make it easy]([url](https://serverfault.com/questions/84815/how-can-i-get-the-size-of-an-amazon-s3-bucket)) to see total size including object versions.
 
 # Installation
 
