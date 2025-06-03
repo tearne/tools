@@ -109,8 +109,6 @@ impl Drop for StorageTestHelper {
 
 
 // TEST_BUCKET=my-bucket cargo test --package tools --lib -- s3::tests --show-output
-
-
 #[test]
 fn test_basic_upload() -> Result<()> {
     let helper = StorageTestHelper::new(

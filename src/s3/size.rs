@@ -46,7 +46,7 @@ impl Display for SizeReport {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.write_fmt(
             format_args!(
-                "{}:\n  {} (current obj. {}, current vers. {}, orphaned vers. {})", 
+                "{}:\n  {} (current obj: {}, current vers: {}, orphaned vers: {})", 
                 self.url, 
                 self.total.size, 
                 self.versions.as_ref().unwrap().current_objects.size, 
