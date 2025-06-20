@@ -1,7 +1,7 @@
 use nvml_wrapper::{Device, Nvml};
 
 
-struct Gpu {
+pub struct Gpu {
     nvml: Nvml,
 }
 impl Gpu {
@@ -15,7 +15,7 @@ impl Gpu {
         }
     }
 
-    pub fn get_usage_all(&self) -> f64 {
+    pub fn check_usage_all(&self) {
         let num_devices = self.nvml.device_count().unwrap();
         println!("You have {} GPU devices", num_devices);
 
@@ -24,7 +24,7 @@ impl Gpu {
             println!("Usage for device {} = {}", idx, usage);
         }
 
-        todo!()
+        println!("...done");
     }
 
     fn get_usage_device(device: &Device) -> u32 {
