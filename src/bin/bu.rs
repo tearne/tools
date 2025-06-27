@@ -1,6 +1,7 @@
 use aws_sdk_s3::Client;
 
 use clap::Parser;
+use dialoguer::Confirm;
 use tokio::runtime::Runtime;
 use color_eyre::{Result};
 use tools::{log::setup_logging, s3::{size::CSVSizeReport, types::S3Location, wrapper::S3Wrapper}};
@@ -22,19 +23,25 @@ enum Command{
     #[clap(name = "size", about = "Report on a single bucket/prefix to console")]
     Size{
         /// S3 URL
-        #[clap(short, long)]
+        #[clap(required = true)]
         url: String,
     },
     #[clap(name = "size-report", about = "Report on a multiple buckets/prefixes to CSV")]
     SizeReport{
         /// Comma separated S3 URLs
-        #[clap(short, long, value_delimiter = ',', num_args = 1..)]
+        #[clap(required = true, value_delimiter = ',', num_args = 1..)]
         urls: Vec<String>,
 
         /// CSV output file
         #[clap(short, long, default_value="bucket_usage.csv")]
         out_file: String,
     },
+    #[clap(name = "destroy", about = "Delete all objects and versions under bucket/prefix")]
+    Destroy{
+        /// S3 URL to purge all objects and versions from
+        #[arg(required = true)]
+        url: String
+    }
 }
 
 fn main() -> Result<()> {
@@ -50,6 +57,20 @@ fn main() -> Result<()> {
         };
 
         match cli.command {
+            Command::Destroy { url } => {
+                if Confirm::new()
+                    .with_prompt(format!(" Are you sure you want to destroy all objects and versions under {}?", url))
+                    .default(false)
+                    .interact()
+                    .expect("Interaction error") {
+
+                    println!("*** Action confirmed ");
+                    let s3_location = S3Location::parse(&url)?;
+                    s3.purge_all_versions_of_everything(&s3_location.bucket, &s3_location.prefix, true).await?
+                } else {
+                    println!("*** Action dismissed")
+                }
+            }
             Command::Size { url } => {
                 let s3_location = S3Location::parse(&url)?;
                 log::info!("Analysing: {}", &s3_location);

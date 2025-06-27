@@ -5,9 +5,9 @@ Monitors ***p***rocess ***u***sage (CPU & RAM) and saves the time series data to
 Originally created to see if containers were over-allocated resource in serverless infrastructure.
 
 ## `bu`
-An S3 ***b***ucket ***u***tility to report on size, including object versions.
+An S3 ***b***ucket ***u***tility to make handling object versions simpler.
 
-Created after a surprise when a bucket, containing 100 MiB of objects, was found to be 10 GiB in size due to 'object churn' and versioning.  The AWS S3 CLI [doesn't make it easy]([url](https://serverfault.com/questions/84815/how-can-i-get-the-size-of-an-amazon-s3-bucket)) to see total size including object versions.
+Created after a surprise when a bucket, supposedly containing 100 MiB of objects, was found to be 10 GiB due to 'object churn' and versioning.  The AWS S3 CLI [doesn't make it easy]([url](https://serverfault.com/questions/84815/how-can-i-get-the-size-of-an-amazon-s3-bucket)) to see total size including object versions.
 
 # Installation
 
@@ -23,7 +23,7 @@ It assumes an IAM Role is provided via instance profile - you can't configure cr
 
 Report the size of a single bucket/prefix to stdout:
 ```
-bu size --url my-bucket/somePrefix
+bu size my-bucket/somePrefix
 ```
 Output:
 > s3://my-bucket/somePrefix:  
@@ -31,7 +31,12 @@ Output:
 
 Report the size of several buckets/prefixes to a CSV file (defaults to `bucket_usage.csv`):
 ```
-bu size-report --urls my-bucket/somePrefix,your-bucket,another-bucket
+bu size-report my-bucket/somePrefix,your-bucket,another-bucket
+```
+
+Delete all versions of an object under bucket/prefix
+```
+bu destroy my-bucket/somePrefix
 ```
 
 # `pu` example
