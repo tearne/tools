@@ -8,7 +8,7 @@ use tools::{log::setup_logging, s3::{size::CSVSizeReport, types::S3Location, wra
 
 #[derive(Parser)]
 #[command(version, about)]
-/// Run a command, monitoring CPU and RAM usage at regular intervals and saving to a CSV file.
+/// Utility to support working with object versions in S3 
 struct Cli{
     /// Verbose mode (-v, -vv, -vvv)
     #[clap(short, long, action = clap::ArgAction::Count)]
