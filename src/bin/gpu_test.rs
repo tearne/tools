@@ -1,9 +1,12 @@
 // cargo run --bin gpu_test
 
+use core::time;
 use std::process::Command;
+use std::thread;
 
-use tools::gpu::Gpu;
 use clap::Parser;
+use tools::gpu::Gpu;
+use tools::log::setup_logging;
 
 /*
 Tested on g4dn.xlarge
@@ -15,27 +18,30 @@ Useful tools:
 */
 
 #[derive(Parser)]
+#[command(version, about)]
+/// Run a command, monitoring CPU and RAM usage at regular intervals and saving to a CSV file.
 struct Cli {
-    /// Command to run
-    // getting the pid of gpu_burn using `gpu_burn & echo $!`
-    #[arg(short, long, default_value = None)]
-    pid: Option<u32>,
+    /// Verbose mode (-v, -vv, -vvv)
+    #[structopt(short, long, action = clap::ArgAction::Count)]
+    verbose: u8,
+
+    /// CPU polling interval (seconds)
+    #[structopt(short, long, default_value = "1")]
+    interval: u64,
 
     /// Command to run
-    // supplying a command doesn't seem to work - the PID returned
-    // doesn't seem to be correct
-    #[arg(short, long, default_value = None)]
-    command: Option<Vec<String>>,
+    #[arg(last = true, required = true)]
+    command: Vec<String>,
+
+    /// Output CSV file
+    #[structopt(short, long, default_value = "process_usage.csv")]
+    file: String,
 }
-
 
 pub fn main() {
     // Check we have the hardware
     {
-        let bytes = Command::new("lspci")
-            .output()
-            .unwrap()
-            .stdout;
+        let bytes = Command::new("lspci").output().unwrap().stdout;
 
         let stdout = str::from_utf8(&bytes).unwrap();
         if stdout.contains("NVIDIA") {
@@ -46,32 +52,17 @@ pub fn main() {
     }
 
     let cli = Cli::parse();
+    setup_logging(cli.verbose);
 
-    match cli.command {
-        Some(command) => {
-            let child = Command::new(&command[0])
-                .args(&command[1..])
-                .spawn()
-                .expect("Command failed to start.");
+    let child = Command::new(&cli.command[0])
+        .args(&cli.command[1..])
+        .spawn()
+        .expect("Command failed to start.");
 
-            let pid = child.id();
-            println!("{pid}");
-            let gpu = Gpu::init().expect("Didn't initialise an NVidia GPU");
-            gpu.check_usage_all(pid);
-        }
-
-        None => {
-            match cli.pid {
-                Some(pid) => {
-                    let gpu = Gpu::init().expect("Didn't initialise an NVidia GPU");
-                    gpu.check_usage_all(pid);
-                }
-                None => {
-                    panic!("Must supply either --command or --pid arguments");
-                }
-            }
-        }
-    }
-
-
+    let pid = child.id();
+    let gpu = Gpu::init().expect("Didn't initialise an NVidia GPU");
+    let ten_secs = time::Duration::from_secs(10);
+    thread::sleep(ten_secs);
+    let usage = gpu.get_process_utilisation(pid, &gpu.get_all_gpu_utilisation());
+    println!("{usage}");
 }

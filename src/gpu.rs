@@ -1,4 +1,4 @@
-use nvml_wrapper::{Nvml, error::NvmlError};
+use nvml_wrapper::{Nvml, error::NvmlError, struct_wrappers::device::ProcessUtilizationSample};
 use sysinfo::{Pid, System, ThreadKind};
 
 pub struct Gpu {
@@ -16,69 +16,58 @@ impl Gpu {
         }
     }
 
-    pub fn check_usage_all(&self, process_id: u32) {
+    pub fn get_all_gpu_utilisation(&self) -> Vec<Vec<ProcessUtilizationSample>> {
         let num_devices = self.nvml.device_count().unwrap();
         println!("You have {} GPU devices", num_devices);
-    
-        // I think that it's actually a child process of the process given
-        // by `gpu_burn & $!`` that's directly utilising the gpu 
-        let children = Self::get_children(process_id);
-
-        // show me the children processes
-        println!("Children: {:#?}", Self::get_children(process_id));
-
-
-        'outer: for idx in 0..num_devices {
-            let mut device = self.nvml.device_by_index(idx).unwrap();
-
-            // enables "accounting" for the device (requires sudo) - appaently accounting is 
-            // required for accounting_stats_for()
-            println!("accounting enabled: {:#?}", device.is_accounting_enabled().unwrap());
-            let _ = device.set_accounting(true).unwrap();
-            println!("accounting enabled: {:#?}", device.is_accounting_enabled().unwrap());
-
-            // lists the "accounting pids" - says there are none - don't understand this
-            println!("accounting pids: {:#?}", device.accounting_pids().unwrap());
-            for child in &children {
-
-                // show me me the running compute processes - should be one with a pid matching one of the children
-                println!("running compute processes: {:#?}", device.running_compute_processes().unwrap());
-
-                // show me utilisation for "relevant currently running processes" 
-                println!("some stats: {:#?}", device.process_utilization_stats(None).unwrap());
-
-                // can't find "accounting stats" for the process - I guess
-                // this is because it's not an "accounting process" but I don't know how
-                // to set this.
-                match device.accounting_stats_for(*child) {
-                    Ok(stats) => {
-                        match stats.gpu_utilization {
-                            Some(usage) => {
-                                println!("Usage for process {} = {}", *child, usage);
-                            }
-                            None => {
-                                println!("Device.Utilization_rates() not supported for this device");
-                            }
-                        }
-                        let _ = &self.nvml.device_by_index(idx).unwrap().set_accounting(false).unwrap();
-                        break 'outer;
+        let mut all_utilisation = Vec::new();
+        for idx in 0..num_devices {
+            let device = self.nvml.device_by_index(idx).unwrap();
+            all_utilisation.push(match device.process_utilization_stats(None) {
+                Ok(result) => result,
+                Err(e) => match e {
+                    NvmlError::Uninitialized => panic!("{e}"),
+                    _ => {
+                        println!("{e}");
+                        continue;
                     }
-                    Err(e) => match e {
-                        NvmlError::NotFound => {
-                            if idx == num_devices-1 {
-                                println!("Process {} not found", *child);
-                            }
-                            continue;
-                        }
-                        _ => {
-                            panic!("{e}");
-                        }
-                    },
-                }
-            }
-            let _ = &self.nvml.device_by_index(idx).unwrap().set_accounting(false).unwrap();
+                },
+            })
         }
-        println!("...done");
+        println!("{:#?}", all_utilisation);
+        return all_utilisation;
+    }
+
+    pub fn get_process_utilisation(
+        &self,
+        process_pid: u32,
+        all_gpu_utilisation: &Vec<Vec<ProcessUtilizationSample>>,
+    ) -> u32 {
+        let children = Self::get_children(process_pid);
+        log::trace!("Process {} has Children {:?}", process_pid, &children.iter().map(|pid|pid).collect::<Vec<_>>());
+        let child_utilisation: u32 = Self::get_children(process_pid)
+            .into_iter()
+            .map(|child| Self::get_process_utilisation(&self, child, all_gpu_utilisation))
+            .sum();
+
+        let process_utilisation: u32 = all_gpu_utilisation
+            .iter()
+            .flat_map(|process_util| {
+                process_util
+                    .iter()
+                    .map(|util| {
+                        if process_pid == util.pid {
+                            util.sm_util
+                        } else {
+                            0
+                        }
+                    })
+            })
+            .sum();
+
+        log::trace!("Process {} has child load {:?}", process_pid, child_utilisation);
+        log::trace!("Process {} has load {:?}", process_pid, process_utilisation);
+
+        process_utilisation + child_utilisation
     }
 
     fn get_children(process_id: u32) -> Vec<u32> {
@@ -88,15 +77,12 @@ impl Gpu {
         sys.processes()
             .iter()
             .filter(|(_pid, process)| {
-                let is_child = process.parent()
-                    .map(|ppid| ppid == pid)
-                    .unwrap_or(false);
+                let is_child = process.parent().map(|ppid| ppid == pid).unwrap_or(false);
 
                 let is_user_thread = process
                     .thread_kind()
                     .map(|k| k == ThreadKind::Userland)
                     .unwrap_or(false);
-
                 is_child && !is_user_thread
             })
             .map(|x| x.0.as_u32())
