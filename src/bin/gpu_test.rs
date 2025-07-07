@@ -60,9 +60,15 @@ pub fn main() {
         .expect("Command failed to start.");
 
     let pid = child.id();
+    let pause = std::time::Duration::from_secs(cli.interval);
     let gpu = Gpu::init().expect("Didn't initialise an NVidia GPU");
-    let ten_secs = time::Duration::from_secs(10);
-    thread::sleep(ten_secs);
-    let usage = gpu.get_process_utilisation(pid, &gpu.get_all_gpu_utilisation());
-    println!("{usage}");
+    let mut last_seen_timestamp: u64 = 0;
+    for _ in 0..10 {
+        std::thread::sleep(pause);
+        let result = gpu.get_all_gpu_utilisation(last_seen_timestamp);
+        let usage = gpu.get_process_utilisation(pid, &result.1);
+        last_seen_timestamp = result.0;
+        println!("{usage}");
+
+    }
 }
