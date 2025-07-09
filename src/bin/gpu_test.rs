@@ -5,6 +5,8 @@ use std::process::Command;
 use std::thread;
 
 use clap::Parser;
+use nvml_wrapper::error::NvmlError;
+use nvml_wrapper::NvLink;
 use tools::gpu::Gpu;
 use tools::log::setup_logging;
 
@@ -62,13 +64,27 @@ pub fn main() {
     let pid = child.id();
     let pause = std::time::Duration::from_secs(cli.interval);
     let gpu = Gpu::init().expect("Didn't initialise an NVidia GPU");
-    let mut last_seen_timestamp: u64 = 0;
+    let mut last_seen_timestamp: Option<u64> = None;
+    let mut process_utilisation: u32 = 0;
     for _ in 0..10 {
         std::thread::sleep(pause);
-        let result = gpu.get_all_gpu_utilisation(last_seen_timestamp);
-        let usage = gpu.get_process_utilisation(pid, &result.1);
-        last_seen_timestamp = result.0;
-        println!("{usage}");
-
+        let all_gpu_utilisation = gpu.get_all_gpu_utilisation(last_seen_timestamp);
+        for device_utilisation in all_gpu_utilisation.iter() {
+            match device_utilisation {
+                Ok(result) => {
+                    process_utilisation = gpu.get_process_utilisation(pid, result);
+                    last_seen_timestamp = Some(result[0].timestamp);
+                    break;
+                }
+                Err(e) => match e {
+                    NvmlError::Uninitialized => panic!("{e}"),
+                    _ => {
+                        println!("{e}");
+                        continue;
+                    }
+                }
+            }
+        }
+        println!("{process_utilisation}");
     }
 }
