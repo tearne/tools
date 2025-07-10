@@ -1,8 +1,6 @@
-use env_logger::fmt::Timestamp;
 use nvml_wrapper::{Nvml, error::NvmlError, struct_wrappers::device::ProcessUtilizationSample};
 use sysinfo::{Pid, System, ThreadKind};
 
-use crate::gpu;
 
 pub struct Gpu {
     nvml: Nvml,
@@ -28,7 +26,6 @@ impl Gpu {
         T: Clone,
     {
         let num_devices = self.nvml.device_count().unwrap();
-        println!("You have {} GPU devices", num_devices);
         let mut all_utilisation = Vec::new();
         for idx in 0..num_devices {
             let device = self.nvml.device_by_index(idx).unwrap();

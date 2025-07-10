@@ -1,13 +1,13 @@
 // cargo run --bin gpu_test
 
-use core::time;
+use std::path::Path;
 use std::process::Command;
-use std::thread;
 
+use chrono::{DateTime, Local};
 use clap::Parser;
 use nvml_wrapper::error::NvmlError;
-use nvml_wrapper::NvLink;
 use tools::gpu::Gpu;
+use color_eyre::eyre::Result;
 use tools::log::setup_logging;
 
 /*
@@ -36,18 +36,18 @@ struct Cli {
     command: Vec<String>,
 
     /// Output CSV file
-    #[structopt(short, long, default_value = "process_usage.csv")]
+    #[structopt(short, long, default_value = "gpu_process_usage.csv")]
     file: String,
 }
 
-pub fn main() {
+fn main() -> Result<()> {
     // Check we have the hardware
     {
         let bytes = Command::new("lspci").output().unwrap().stdout;
 
         let stdout = str::from_utf8(&bytes).unwrap();
         if stdout.contains("NVIDIA") {
-            println!("Yep, you got a GPU");
+            log::info!("Yep, you got a GPU");
         } else {
             panic!("No GPU found")
         }
@@ -56,24 +56,40 @@ pub fn main() {
     let cli = Cli::parse();
     setup_logging(cli.verbose);
 
-    let child = Command::new(&cli.command[0])
+    let out_file = Path::new(&cli.file);
+
+    let mut wtr = csv::Writer::from_path(Path::new(out_file)).unwrap();
+
+    let mut child = Command::new(&cli.command[0])
         .args(&cli.command[1..])
         .spawn()
         .expect("Command failed to start.");
 
     let pid = child.id();
     let pause = std::time::Duration::from_secs(cli.interval);
+    let start_time = Local::now();
+
     let gpu = Gpu::init().expect("Didn't initialise an NVidia GPU");
     let mut last_seen_timestamp: Option<u64> = None;
-    let mut process_utilisation: u32 = 0;
-    for _ in 0..10 {
-        std::thread::sleep(pause);
+    loop {
+        match child.try_wait().unwrap() {
+            None => std::thread::sleep(pause),            
+            Some(_) => {
+                log::info!("He's dead, Jim");
+                break;
+            }
+        }
+        
         let all_gpu_utilisation = gpu.get_all_gpu_utilisation(last_seen_timestamp);
         for device_utilisation in all_gpu_utilisation.iter() {
             match device_utilisation {
                 Ok(result) => {
-                    process_utilisation = gpu.get_process_utilisation(pid, result);
+                    let process_utilisation = gpu.get_process_utilisation(pid, result);
                     last_seen_timestamp = Some(result[0].timestamp);
+                    let record = UsageRecord::new(start_time, process_utilisation);
+                    // let writer = wrt.as_mut().unwrap();
+                    wtr.serialize(record).unwrap();
+                    wtr.flush().unwrap();
                     break;
                 }
                 Err(e) => match e {
@@ -85,6 +101,29 @@ pub fn main() {
                 }
             }
         }
-        println!("{process_utilisation}");
+    }
+
+    log::info!("Usage report written to {}", &out_file.to_string_lossy());
+
+    Ok(())
+}
+
+
+#[derive(Debug, serde::Serialize)]
+struct UsageRecord {
+    timestamp: String,
+    elapsed_seconds: usize,
+    gpu_percent: String,
+}
+
+impl UsageRecord {
+    fn new(start_time: DateTime<Local>, gpu_percent: u32) -> Self {
+        let now = Local::now();
+        let elapsed_seconds = (now - start_time).as_seconds_f32();
+        Self {
+            timestamp: now.format("%Y-%m-%d %H:%M:%S").to_string(),
+            elapsed_seconds: elapsed_seconds.round() as usize,
+            gpu_percent: format!("{:.1}", gpu_percent),
+        }
     }
 }
