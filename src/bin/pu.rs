@@ -165,5 +165,5 @@ impl UsageRecord {
             ram_percent: format!("{:.1}", 100.0 * (cpu_ram.memory_bytes as f32 / system_memory)),
             ram_mb: format!("{:.1}", cpu_ram.memory_bytes as f32 / MI_B),
         }
-    }   
+    }
 }
