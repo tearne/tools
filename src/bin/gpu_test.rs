@@ -59,6 +59,8 @@ fn main() -> Result<()> {
     let pause = std::time::Duration::from_secs(cli.interval);
     let start_time = Local::now();
 
+    let mut sys = System::new_all();
+
     let mut last_seen_timestamp: Option<u64> = None;
     loop {
         match child.try_wait().unwrap() {
@@ -69,7 +71,7 @@ fn main() -> Result<()> {
             }
         }
         
-        let usage = gpu_api.get_pid_utilisation(&gpu_devices, pid, last_seen_timestamp)?;
+        let usage = gpu_api.get_pid_utilisation(&gpu_devices, pid, last_seen_timestamp, &sys)?;
         last_seen_timestamp = Some(usage.last_seen_timestamp);
 
         let record = UsageRecord::new(

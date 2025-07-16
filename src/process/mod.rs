@@ -3,8 +3,15 @@ use std::collections::HashSet;
 use sysinfo::{Pid, System, ThreadKind};
 
 pub mod gpu;
+pub mod cpu;
 
-fn get_pid_descendants(process_id: u32) -> HashSet<u32> {
+
+
+pub fn pid_is_alive(process_id: u32, sys: &System) -> bool {
+    sys.process(Pid::from_u32(process_id)).is_some()
+}
+
+pub fn get_pid_tree(process_id: u32, sys: &System) -> HashSet<u32> {
     fn find_children(pid: u32, sys: &System) -> HashSet<u32> { 
         let pid = Pid::from_u32(pid);
         sys.processes()
@@ -22,13 +29,12 @@ fn get_pid_descendants(process_id: u32) -> HashSet<u32> {
             .collect()
     }
     
-    let sys = System::new_all();
     let mut to_visit = vec![process_id];
     let mut acc = Vec::new();
 
     while let Some(pid) = to_visit.pop() {
         acc.push(pid);
-        to_visit.extend(find_children(pid, &sys));
+        to_visit.extend(find_children(pid, sys));
     }
 
     HashSet::from_iter(acc.into_iter())

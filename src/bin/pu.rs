@@ -1,10 +1,9 @@
-use std::{path::Path, process::Command, sync::{Arc, Mutex}};
-
+use std::{fs::canonicalize, path::Path, process::Command};
 use chrono::{DateTime, Local};
 use clap::Parser;
-use sysinfo::{Pid, Process, ProcessRefreshKind, ProcessesToUpdate, System, ThreadKind};
-use color_eyre::eyre::Result;
-use tools::log::setup_logging;
+use sysinfo::{ProcessRefreshKind, ProcessesToUpdate, System};
+use color_eyre::eyre::{Context, Result};
+use tools::{log::setup_logging, process::{cpu::{get_pid_utilisation, CpuRamUsage}, pid_is_alive}};
 
 static MI_B: f32 = 2u64.pow(20) as f32;
 
@@ -34,118 +33,53 @@ fn main() -> Result<()> {
     let cli = Cli::parse();
     setup_logging(cli.verbose);
 
-    let out_file = Path::new(&cli.file);
+    let mut writer = canonicalize(Path::new(&cli.file))
+        .wrap_err("failed to canonicalize path")
+        .and_then(|abs_path|{
+            csv::Writer::from_path(&abs_path)
+                .wrap_err("Failed to create output file writer")
+        })?;
 
-    let wtr = {
-        Arc::new(Mutex::new(csv::Writer::from_path(Path::new(out_file))))
-    };
-
-    let mut child = Command::new(&cli.command[0])
+    let process = Command::new(&cli.command[0])
         .args(&cli.command[1..])
         .spawn()
         .expect("Command failed to start.");
 
-    let pid = child.id();
+    let pid = process.id();
+    log::trace!("Started pid {}", pid);
     let pause = std::time::Duration::from_secs(cli.interval);
     let start_time = Local::now();
 
-    let wtr_cloned = wtr.clone();
-    let thread = std::thread::spawn(move ||{
-        let pid = Pid::from_u32(pid);
+    let mut sys = System::new_all();
+    
+    let system_memory = sys.total_memory() as f32;
 
-        let mut sys = System::new_all();
-        let system_memory = sys.total_memory() as f32;
-        log::info!("System has {} MiB RAM", system_memory / MI_B);
+    loop{
+        std::thread::sleep(pause);
 
-        let mut wrt_guard = wtr_cloned.lock().unwrap();
-        
-        loop{
-            std::thread::sleep(pause);
+        sys.refresh_processes_specifics(
+            ProcessesToUpdate::All,
+            true,
+            ProcessRefreshKind::nothing()
+                .with_memory()
+                .with_cpu()
+        );
 
-            sys.refresh_processes_specifics(
-                ProcessesToUpdate::All,
-                true,
-                ProcessRefreshKind::nothing()
-                    .with_memory()
-                    .with_cpu()
-            );
-
-            if let Some(process) = sys.process(pid) {
-                let cpu_ram = get_usage(process, &sys);
-
-                let record = UsageRecord::new(start_time, cpu_ram, system_memory);
-                let writer = wrt_guard.as_mut().unwrap();
-                writer.serialize(record).unwrap();
-                writer.flush().unwrap();
-            } else {
-                log::info!("He's dead, Jim");
-                break;
-            }
-
-            sys.refresh_processes_specifics(
-                ProcessesToUpdate::All,
-                true,
-                ProcessRefreshKind::nothing().with_cpu()
-            );
+        if !pid_is_alive(pid, &sys) {
+            log::info!("pid {} is dead", pid);
+            break;
         }
-    });
 
-    log::info!("Waiting for command to complete...");
-    child.wait()?;
-    log::info!("Waiting for monitoring thread...");
-    thread.join().unwrap();
-    log::info!("Flushing report...");
-    wtr.lock().unwrap().as_mut().unwrap().flush()?;
+        let cpu_ram = get_pid_utilisation(pid, &mut sys);
 
-    log::info!("Usage report written to {}", &out_file.to_string_lossy());
+        let record = UsageRecord::new(start_time, cpu_ram, system_memory);
+        writer.serialize(record).unwrap();
+        writer.flush().unwrap();
+    }
+
+    log::info!("Usage report written to {}", &cli.file);
 
     Ok(())
-}
-
-fn get_usage(process: &Process, sys: &System) -> CpuRam {
-    let process_pid = process.pid();
-
-    let process_tree = get_pid_descendants(process_pid.as_u32());
-
-    
-
-    let children: Vec<_> = sys.processes()
-        .iter()
-        .filter(|(_pid, process)|{
-            let is_child = process.parent()
-                .map(|ppid|ppid == process_pid)
-                .unwrap_or(false);
-
-            let is_user_thread = process.thread_kind()
-                .map(|k|k==ThreadKind::Userland)
-                .unwrap_or(false);
-
-            is_child && !is_user_thread
-        }
-        )
-        .collect();
-
-    log::trace!("Process {} has Children {:?}", process_pid, &children.iter().map(|(pid, _)|pid).collect::<Vec<_>>());
-    let children_load: CpuRam = children
-        .iter()
-        .map(|(_, child)|
-            get_usage(child, sys)
-        )
-        .sum();
-
-    log::trace!("Process {} has child load {:?}", process_pid, children_load);
-    log::trace!("Process {}: CPU: {}, RAM_mem: {}, RAM_virt: {}", process_pid, process.cpu_usage(), process.memory(), process.virtual_memory());
-
-    children_load + CpuRam { 
-        cpu_percent: process.cpu_usage(), 
-        memory_bytes: process.memory() 
-    }
-}
-
-#[derive(derive_more::Add, derive_more::Sum, serde::Serialize, Debug)]
-struct CpuRam{
-    cpu_percent: f32,
-    memory_bytes: u64,
 }
 
 
@@ -159,7 +93,7 @@ struct UsageRecord {
 }
 
 impl UsageRecord {
-    fn new(start_time: DateTime<Local>, cpu_ram: CpuRam, system_memory: f32) -> Self {
+    fn new(start_time: DateTime<Local>, cpu_ram: CpuRamUsage, system_memory: f32) -> Self {
         let now = Local::now();
         let elapsed_seconds = (now - start_time).as_seconds_f32();
         Self {

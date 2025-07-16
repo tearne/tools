@@ -2,8 +2,9 @@ use std::{process::Command, str::from_utf8};
 
 use nvml_wrapper::{struct_wrappers::device::ProcessUtilizationSample, Device, Nvml};
 use color_eyre::{eyre::{bail, Context, ContextCompat}, Result};
+use sysinfo::System;
 
-use crate::process::get_pid_descendants;
+use crate::process::get_pid_tree;
 
 pub struct GpuDevices<'a>(Vec<Device<'a>>);
 
@@ -63,8 +64,9 @@ impl GpuApi {
         devices: &GpuDevices,
         pid: u32,
         last_seen_timestamp: Option<u64>,
+        sys: &System
     ) -> Result<Usage> {
-        let children = get_pid_descendants(pid);
+        let children = get_pid_tree(pid, sys);
         log::trace!(
             "Process {} has Children {:?}",
             pid,
