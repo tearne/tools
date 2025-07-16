@@ -2,7 +2,7 @@ use std::{fs::canonicalize, path::Path, process::Command};
 use chrono::{DateTime, Local};
 use clap::Parser;
 use sysinfo::{ProcessRefreshKind, ProcessesToUpdate, System};
-use color_eyre::eyre::{Context, Result};
+use color_eyre::eyre::{bail, Context, Result};
 use tools::{log::setup_logging, process::{cpu::{get_pid_utilisation, CpuRamUsage}, pid_is_alive}};
 
 static MI_B: f32 = 2u64.pow(20) as f32;
@@ -40,7 +40,7 @@ fn main() -> Result<()> {
                 .wrap_err("Failed to create output file writer")
         })?;
 
-    let process = Command::new(&cli.command[0])
+    let mut process = Command::new(&cli.command[0])
         .args(&cli.command[1..])
         .spawn()
         .expect("Command failed to start.");
@@ -54,6 +54,8 @@ fn main() -> Result<()> {
     
     let system_memory = sys.total_memory() as f32;
 
+    std::mem::drop(process);
+
     loop{
         std::thread::sleep(pause);
 
@@ -63,7 +65,17 @@ fn main() -> Result<()> {
             ProcessRefreshKind::nothing()
                 .with_memory()
                 .with_cpu()
+                .with_tasks()
         );
+
+        // match process.try_wait() {
+        //     Ok(Some(status)) => {
+        //         log::info!("Command exited with status {:?}", status);
+        //         break;
+        //     },
+        //     Ok(None) => (),
+        //     Err(_) => bail!("Failed to query status of spawned command"),
+        // }
 
         if !pid_is_alive(pid, &sys) {
             log::info!("pid {} is dead", pid);

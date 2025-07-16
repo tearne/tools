@@ -1,10 +1,10 @@
-use sysinfo::{Pid, System, ThreadKind};
+use sysinfo::{Pid, System};
 
 use crate::process::get_pid_tree;
 
 
 pub fn get_pid_utilisation(pid: u32, sys: &mut System) -> CpuRamUsage {
-    let children = get_pid_tree(pid, sys);
+    let children = get_pid_tree(pid, sys, true);
     log::trace!("Descendants of {}: {:#?}", pid, &children);
    
     let usage = children.iter()
@@ -12,19 +12,6 @@ pub fn get_pid_utilisation(pid: u32, sys: &mut System) -> CpuRamUsage {
             let proc_opt = sys.process(Pid::from_u32(*pid));
             log::trace!("Found child: {:?}", proc_opt.map(|p|p.pid()));
             proc_opt
-        })
-        .filter(|&proc|{
-            match proc.thread_kind() {
-                Some(kind) => {
-                    let is_userland = kind == ThreadKind::Userland;
-                    log::trace!("pid {} has kind {:?}", proc.pid(), kind);
-                    is_userland
-                },
-                None => {
-                    log::info!("Discarding process {} as no thread kind", proc.pid());
-                    false
-                },
-            }
         })
         .map(|proc|{
             let usage = CpuRamUsage{

@@ -66,7 +66,7 @@ impl GpuApi {
         last_seen_timestamp: Option<u64>,
         sys: &System
     ) -> Result<Usage> {
-        let children = get_pid_tree(pid, sys);
+        let children = get_pid_tree(pid, sys, true);
         log::trace!(
             "Process {} has Children {:?}",
             pid,
