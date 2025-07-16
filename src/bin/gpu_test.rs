@@ -1,14 +1,13 @@
 // cargo run --bin gpu_test
 
-use std::path::Path;
+use std::{path::Path, str::from_utf8};
 use std::process::Command;
 
 use chrono::{DateTime, Local};
 use clap::Parser;
-use nvml_wrapper::error::NvmlError;
-use tools::gpu::Gpu;
 use color_eyre::eyre::Result;
 use tools::log::setup_logging;
+use tools::process::gpu::GpuApi;
 
 /*
 Tested on g4dn.xlarge
@@ -41,24 +40,15 @@ struct Cli {
 }
 
 fn main() -> Result<()> {
-    // Check we have the hardware
-    {
-        let bytes = Command::new("lspci").output().unwrap().stdout;
-
-        let stdout = str::from_utf8(&bytes).unwrap();
-        if stdout.contains("NVIDIA") {
-            log::info!("Yep, you got a GPU");
-        } else {
-            panic!("No GPU found")
-        }
-    }
-
     let cli = Cli::parse();
     setup_logging(cli.verbose);
 
+    let gpu_api = GpuApi::new()?;
+    let gpu_devices = gpu_api.build_devices()?;
+
     let out_file = Path::new(&cli.file);
 
-    let mut wtr = csv::Writer::from_path(Path::new(out_file)).unwrap();
+    let mut wtr = csv::Writer::from_path(Path::new(out_file))?;
 
     let mut child = Command::new(&cli.command[0])
         .args(&cli.command[1..])
@@ -69,7 +59,6 @@ fn main() -> Result<()> {
     let pause = std::time::Duration::from_secs(cli.interval);
     let start_time = Local::now();
 
-    let gpu = Gpu::init().expect("Didn't initialise an NVidia GPU");
     let mut last_seen_timestamp: Option<u64> = None;
     loop {
         match child.try_wait().unwrap() {
@@ -80,27 +69,16 @@ fn main() -> Result<()> {
             }
         }
         
-        let all_gpu_utilisation = gpu.get_all_gpu_utilisation(last_seen_timestamp);
-        for device_utilisation in all_gpu_utilisation.iter() {
-            match device_utilisation {
-                Ok(result) => {
-                    let process_utilisation = gpu.get_process_utilisation(pid, result);
-                    last_seen_timestamp = Some(result[0].timestamp);
-                    let record = UsageRecord::new(start_time, process_utilisation);
-                    // let writer = wrt.as_mut().unwrap();
-                    wtr.serialize(record).unwrap();
-                    wtr.flush().unwrap();
-                    break;
-                }
-                Err(e) => match e {
-                    NvmlError::Uninitialized => panic!("{e}"),
-                    _ => {
-                        println!("{e}");
-                        continue;
-                    }
-                }
-            }
-        }
+        let usage = gpu_api.get_pid_utilisation(&gpu_devices, pid, last_seen_timestamp)?;
+        last_seen_timestamp = Some(usage.last_seen_timestamp);
+
+        let record = UsageRecord::new(
+            start_time, 
+            usage.percent
+        );
+
+        wtr.serialize(record).unwrap();
+        wtr.flush().unwrap();
     }
 
     log::info!("Usage report written to {}", &out_file.to_string_lossy());

@@ -105,6 +105,10 @@ fn main() -> Result<()> {
 fn get_usage(process: &Process, sys: &System) -> CpuRam {
     let process_pid = process.pid();
 
+    let process_tree = get_pid_descendants(process_pid.as_u32());
+
+    
+
     let children: Vec<_> = sys.processes()
         .iter()
         .filter(|(_pid, process)|{
