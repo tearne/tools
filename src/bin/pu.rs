@@ -1,9 +1,9 @@
 use std::{fs::canonicalize, path::Path, process::Command, sync::{Arc, Mutex}};
 use chrono::{DateTime, Local};
 use clap::Parser;
-use sysinfo::{ProcessRefreshKind, ProcessesToUpdate, System};
-use color_eyre::eyre::{bail, Context, Result};
-use tools::{log::setup_logging, process::{cpu::{get_pid_utilisation, CpuRamUsage}, pid_is_alive}};
+use color_eyre::eyre::{Context, Result};
+use sysinfo::Pid;
+use tools::{log::setup_logging, process::system::{CpuRamUsage, System}};
 
 static MI_B: f32 = 2u64.pow(20) as f32;
 
@@ -41,51 +41,32 @@ fn main() -> Result<()> {
         })?;
 
     let writer = Arc::new(Mutex::new(writer));
-
     let mut command_process = Command::new(&cli.command[0])
         .args(&cli.command[1..])
         .spawn()
         .expect("Command failed to start.");
+    let mut system = System::new();
 
-    let pid = command_process.id();
+    let pid = Pid::from_u32(command_process.id());
     log::trace!("Started pid {}", pid);
     let pause = std::time::Duration::from_secs(cli.interval);
     let start_time = Local::now();
     let writer_cloned = writer.clone();
 
-    let thread = std::thread::spawn(move ||{
-        let mut sys = System::new_all();
-        
-        let system_memory = sys.total_memory() as f32;
+    let thread = std::thread::spawn(move ||{     
+        let system_memory = system.total_memory() as f32;
+        log::info!("System memory: {}", system_memory);
         let mut wrt_guard = writer_cloned.lock().unwrap();
-        
+
         loop{
             std::thread::sleep(pause);
 
-            sys.refresh_processes_specifics(
-                ProcessesToUpdate::All,
-                true,
-                ProcessRefreshKind::nothing()
-                    .with_memory()
-                    .with_cpu()
-                    .with_tasks()
-            );
-
-            // match process.try_wait() {
-            //     Ok(Some(status)) => {
-            //         log::info!("Command exited with status {:?}", status);
-            //         break;
-            //     },
-            //     Ok(None) => (),
-            //     Err(_) => bail!("Failed to query status of spawned command"),
-            // }
-
-            if !pid_is_alive(pid, &sys) {
+            if !system.pid_is_alive(pid) {
                 log::info!("pid {} is dead", pid);
                 break;
             }
 
-            let cpu_ram = get_pid_utilisation(pid, &mut sys);
+            let cpu_ram = system.get_pid_tree_utilisation(pid);
 
             let record = UsageRecord::new(start_time, cpu_ram, system_memory);
             // let writer = wrt_guard.as_mut().unwrap();

@@ -2,9 +2,9 @@ use std::{process::Command, str::from_utf8};
 
 use nvml_wrapper::{struct_wrappers::device::ProcessUtilizationSample, Device, Nvml};
 use color_eyre::{eyre::{bail, Context, ContextCompat}, Result};
-use sysinfo::System;
+use sysinfo::Pid;
 
-use crate::process::get_pid_tree;
+use crate::process::system::System;
 
 pub struct GpuDevices<'a>(Vec<Device<'a>>);
 
@@ -62,11 +62,11 @@ impl GpuApi {
     pub fn get_pid_utilisation(
         &self,
         devices: &GpuDevices,
-        pid: u32,
+        pid: Pid,
         last_seen_timestamp: Option<u64>,
-        sys: &System
+        system: &mut System
     ) -> Result<Usage> {
-        let children = get_pid_tree(pid, sys, true);
+        let children = system.get_pid_tree(pid, false);
         log::trace!(
             "Process {} has Children {:?}",
             pid,
@@ -82,7 +82,7 @@ impl GpuApi {
         let sum = all_utilisation
             .iter()
             .filter_map(|p_sample|
-                match children.contains(&p_sample.pid) {
+                match children.contains(&Pid::from_u32(p_sample.pid)) {
                     true => Some(p_sample.sm_util),
                     false => None,
                 }

@@ -1,13 +1,15 @@
 // cargo run --bin gpu_test
 
-use std::{path::Path, str::from_utf8};
+use std::path::Path;
 use std::process::Command;
 
 use chrono::{DateTime, Local};
 use clap::Parser;
 use color_eyre::eyre::Result;
+use sysinfo::Pid;
 use tools::log::setup_logging;
 use tools::process::gpu::GpuApi;
+use tools::process::system::System;
 
 /*
 Tested on g4dn.xlarge
@@ -55,11 +57,11 @@ fn main() -> Result<()> {
         .spawn()
         .expect("Command failed to start.");
 
-    let pid = child.id();
+    let pid = Pid::from_u32(child.id());
     let pause = std::time::Duration::from_secs(cli.interval);
     let start_time = Local::now();
 
-    let mut sys = System::new_all();
+    let mut system = System::new();
 
     let mut last_seen_timestamp: Option<u64> = None;
     loop {
@@ -71,7 +73,7 @@ fn main() -> Result<()> {
             }
         }
         
-        let usage = gpu_api.get_pid_utilisation(&gpu_devices, pid, last_seen_timestamp, &sys)?;
+        let usage = gpu_api.get_pid_utilisation(&gpu_devices, pid, last_seen_timestamp, &mut system)?;
         last_seen_timestamp = Some(usage.last_seen_timestamp);
 
         let record = UsageRecord::new(
