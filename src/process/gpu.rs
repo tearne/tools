@@ -22,7 +22,7 @@ impl GpuApi {
         let bytes = Command::new("lspci").output().unwrap().stdout;
         let stdout = from_utf8(&bytes).unwrap();
         if stdout.contains("NVIDIA") {
-            log::info!("`lspci`, confirms existence of a GPU");
+            log::debug!("`lspci`, confirms existence of a GPU");
         } else {
             bail!("`lspci` did not confirm the presence of a GPU")
         }
@@ -35,6 +35,8 @@ impl GpuApi {
         let devices = (0..num_devices)
             .map(|idx|self.nvml.device_by_index(idx).wrap_err("Device initialisation failure"))
             .collect::<Result<Vec<Device<'a>>>>()?;
+
+        log::debug!("Found devices: {:?}", &devices);
         
         Ok(GpuDevices(devices))
     }
