@@ -57,7 +57,10 @@ impl GpuApi {
         devices: &GpuDevices,
         last_seen_timestamp: Option<u64>,
     ) -> Result<Vec<ProcessUtilizationSample>> {
-        let pause = std::time::Duration::from_millis(500);
+        let timeout_seconds = 5;
+        let pause_seconds = 1;
+        let max_iterations = timeout_seconds / pause_seconds;
+        let pause = std::time::Duration::from_secs(pause_seconds);
         let stats: Result<Vec<ProcessUtilizationSample>> = devices
             .0
             .iter()
@@ -67,10 +70,11 @@ impl GpuApi {
                     match d.process_utilization_stats(last_seen_timestamp) {
                         Err(e) => match e {
                             NvmlError::NotFound => {
-                                if i > 4 {
-                                    return Err(eyre::eyre!("time out"))
+                                if i > max_iterations {
+                                    return Err(eyre::eyre!("Time out waiting for GPU process PID"))
                                         .wrap_err("Failed to get device utilisation sample");
                                 }
+                                log::info!("Waiting for GPU process PID");
                                 i += 1;
                                 std::thread::sleep(pause);
                                 continue;
