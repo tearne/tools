@@ -76,42 +76,42 @@ impl GpuApi {
         pid: Pid,
         last_seen_timestamp: Option<u64>,
         system: &mut System,
-    ) -> Result<Usage> {
+    ) -> Result<Option<Usage>> {
         let children = system.get_pid_tree(pid, false);
         log::trace!("Process {} has Children {:?}", pid, children);
 
-        println!("{:?}", last_seen_timestamp);
-        let all_utilisation = match last_seen_timestamp {
+        let timeout_seconds = 5;
+        let pause_seconds = 1;
+        let max_iterations = timeout_seconds / pause_seconds;
+        let pause = std::time::Duration::from_secs(pause_seconds);
+        let mut i = 0;
+        let all_utilisation = 
             // before Nvml has detected a GPU PID
-            None => {
-                let timeout_seconds = 5;
-                let pause_seconds = 1;
-                let max_iterations = timeout_seconds / pause_seconds;
-                let pause = std::time::Duration::from_secs(pause_seconds);
-                let mut i = 0;
                 loop {
                     match self.get_all_utilisation(devices, last_seen_timestamp) {
                         Ok(result) => break result,
                         Err(e) => match e {
                             NvmlError::NotFound => {
-                                if i > max_iterations {
-                                    return Err(eyre::eyre!(
-                                        "Time out waiting for GPU process PID"
-                                    ))
-                                    .wrap_err("Failed to get device utilisation sample");
+                                match last_seen_timestamp {
+                                    None => {
+                                        if i > max_iterations {
+                                            return Err(eyre::eyre!(
+                                                "Time out waiting for GPU process PID"
+                                            ))
+                                            .wrap_err("Failed to get device utilisation sample");
+                                        }
+                                        log::info!("Waiting for GPU process PID");
+                                        i += 1;
+                                        std::thread::sleep(pause);
+                                        continue;
+                                    }
+                                    Some(_) => return Ok(None)
                                 }
-                                log::info!("Waiting for GPU process PID");
-                                i += 1;
-                                std::thread::sleep(pause);
-                                continue;
                             }
                             _ => return Err(e).wrap_err("Failed to get device utilisation sample"),
                         },
                     }
-                }
-            }
-            Some(timestamp) => self.get_all_utilisation(devices, Some(timestamp))?,
-        };
+                };
 
         let max_timestamp: u64 = all_utilisation
             .iter()
@@ -129,9 +129,9 @@ impl GpuApi {
             )
             .sum();
 
-        Ok(Usage {
+        Ok(Some(Usage {
             percent: sum,
             last_seen_timestamp: max_timestamp,
-        })
+        }))
     }
 }

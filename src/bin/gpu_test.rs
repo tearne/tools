@@ -75,15 +75,22 @@ fn main() -> Result<()> {
         }
         
         let usage = gpu_api.get_pid_utilisation(&gpu_devices, pid, last_seen_timestamp, &mut system)?;
-        last_seen_timestamp = Some(usage.last_seen_timestamp);
+        match usage {
+            Some(proc_usage) => {
+                last_seen_timestamp = Some(proc_usage.last_seen_timestamp);
 
-        let record = UsageRecord::new(
-            start_time, 
-            usage.percent
-        );
+                let record = UsageRecord::new(
+                    start_time, 
+                    proc_usage.percent
+                );
 
-        wtr.serialize(record).unwrap();
-        wtr.flush().unwrap();
+                wtr.serialize(record).unwrap();
+                wtr.flush().unwrap();
+            }
+            None => {
+                continue;
+            }
+        }
     }
 
     log::info!("Usage report written to {}", &out_file.to_string_lossy());
