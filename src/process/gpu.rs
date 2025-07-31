@@ -56,44 +56,18 @@ impl GpuApi {
         &self,
         devices: &GpuDevices,
         last_seen_timestamp: Option<u64>,
-    ) -> Result<Vec<ProcessUtilizationSample>> {
-        let timeout_seconds = 5;
-        let pause_seconds = 1;
-        let max_iterations = timeout_seconds / pause_seconds;
-        let pause = std::time::Duration::from_secs(pause_seconds);
-        let stats: Result<Vec<ProcessUtilizationSample>> = devices
+    ) -> std::result::Result<Vec<ProcessUtilizationSample>, NvmlError> {
+        devices
             .0
             .iter()
-            .map(|d| {
-                let mut i = 0;
-                loop {
-                    match d.process_utilization_stats(last_seen_timestamp) {
-                        Err(e) => match e {
-                            NvmlError::NotFound => {
-                                if i > max_iterations {
-                                    return Err(eyre::eyre!("Time out waiting for GPU process PID"))
-                                        .wrap_err("Failed to get device utilisation sample");
-                                }
-                                log::info!("Waiting for GPU process PID");
-                                i += 1;
-                                std::thread::sleep(pause);
-                                continue;
-                            }
-                            _ => return Err(e).wrap_err("Failed to get device utilisation sample"),
-                        },
-                        Ok(result) => return Ok(result),
-                    }
-                }
-            })
+            .map(|d| d.process_utilization_stats(last_seen_timestamp))
             .try_fold(
                 Vec::<ProcessUtilizationSample>::new(),
-                |mut acc, res_samples| -> Result<_> {
+                |mut acc, res_samples| -> std::result::Result<_, NvmlError> {
                     acc.extend(res_samples?);
                     Result::Ok(acc)
                 },
-            );
-
-        stats
+            )
     }
 
     pub fn get_pid_utilisation(
@@ -106,7 +80,39 @@ impl GpuApi {
         let children = system.get_pid_tree(pid, false);
         log::trace!("Process {} has Children {:?}", pid, children);
 
-        let all_utilisation = self.get_all_utilisation(devices, last_seen_timestamp)?;
+        println!("{:?}", last_seen_timestamp);
+        let all_utilisation = match last_seen_timestamp {
+            // before Nvml has detected a GPU PID
+            None => {
+                let timeout_seconds = 5;
+                let pause_seconds = 1;
+                let max_iterations = timeout_seconds / pause_seconds;
+                let pause = std::time::Duration::from_secs(pause_seconds);
+                let mut i = 0;
+                loop {
+                    match self.get_all_utilisation(devices, last_seen_timestamp) {
+                        Ok(result) => break result,
+                        Err(e) => match e {
+                            NvmlError::NotFound => {
+                                if i > max_iterations {
+                                    return Err(eyre::eyre!(
+                                        "Time out waiting for GPU process PID"
+                                    ))
+                                    .wrap_err("Failed to get device utilisation sample");
+                                }
+                                log::info!("Waiting for GPU process PID");
+                                i += 1;
+                                std::thread::sleep(pause);
+                                continue;
+                            }
+                            _ => return Err(e).wrap_err("Failed to get device utilisation sample"),
+                        },
+                    }
+                }
+            }
+            Some(timestamp) => self.get_all_utilisation(devices, Some(timestamp))?,
+        };
+
         let max_timestamp: u64 = all_utilisation
             .iter()
             .max_by_key(|sample| sample.timestamp)
