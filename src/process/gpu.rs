@@ -2,7 +2,7 @@ use std::{process::Command, str::from_utf8};
 
 use color_eyre::{
     Result,
-    eyre::{Context, ContextCompat, bail},
+    eyre::{self, Context, ContextCompat, bail},
 };
 use nvml_wrapper::{
     Device, Nvml, error::NvmlError, struct_wrappers::device::ProcessUtilizationSample,
@@ -57,14 +57,24 @@ impl GpuApi {
         devices: &GpuDevices,
         last_seen_timestamp: Option<u64>,
     ) -> Result<Vec<ProcessUtilizationSample>> {
+        let pause = std::time::Duration::from_millis(500);
         let stats: Result<Vec<ProcessUtilizationSample>> = devices
             .0
             .iter()
             .map(|d| {
+                let mut i = 0;
                 loop {
                     match d.process_utilization_stats(last_seen_timestamp) {
                         Err(e) => match e {
-                            NvmlError::NotFound => continue,
+                            NvmlError::NotFound => {
+                                if i > 4 {
+                                    return Err(eyre::eyre!("time out"))
+                                        .wrap_err("Failed to get device utilisation sample");
+                                }
+                                i += 1;
+                                std::thread::sleep(pause);
+                                continue;
+                            }
                             _ => return Err(e).wrap_err("Failed to get device utilisation sample"),
                         },
                         Ok(result) => return Ok(result),
