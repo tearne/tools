@@ -4,7 +4,7 @@ use color_eyre::eyre::{Context, Result};
 use std::{
     fs::canonicalize,
     path::Path,
-    process::{Command, Child},
+    process::{Child, Command},
     sync::{Arc, Mutex},
 };
 use sysinfo::Pid;
@@ -17,6 +17,22 @@ use tools::{
 };
 
 static MI_B: f32 = 2u64.pow(20) as f32;
+
+trait GracefulExit<T, E> {
+    fn warn_and_exit(self, msg: &str) -> T;
+}
+
+impl<T, E: std::fmt::Debug> GracefulExit<T, E> for Result<T, E> {
+    fn warn_and_exit(self, msg: &str) -> T {
+        match self {
+            Ok(val) => val,
+            Err(e) => {
+                log::warn!("{}: {:?}", msg, e);
+                std::process::exit(1);
+            }
+        }
+    }
+}
 
 #[derive(Parser)]
 #[command(version, about)]
@@ -72,10 +88,12 @@ fn main() -> Result<()> {
             let pause = std::time::Duration::from_secs(cli.interval);
             let start_time = Local::now();
 
-
             let mut last_seen_timestamp: Option<u64> = None;
             loop {
-                match command_process.try_wait().unwrap() {
+                match command_process.try_wait().warn_and_exit(&format!(
+                    "Command process failed: {:?}",
+                    &cli.command.join(" ")
+                )) {
                     None => std::thread::sleep(pause),
                     Some(_) => {
                         log::info!("pid {} is dead", pid);
@@ -100,8 +118,10 @@ fn main() -> Result<()> {
                             Some(proc_usage.percent),
                         );
 
-                        wtr.serialize(record).unwrap();
-                        wtr.flush().unwrap();
+                        wtr.serialize(&record)
+                            .warn_and_exit(&format!("Failed to serialize record: {:?}", record));
+                        wtr.flush()
+                            .warn_and_exit("Problem writing to underlying writer");
                     }
                     None => {
                         log::info!("GPU process not found. Most likely it has finished");
@@ -118,8 +138,9 @@ fn main() -> Result<()> {
                 .wrap_err("failed to canonicalize path")
                 .and_then(|abs_path| {
                     csv::Writer::from_path(&abs_path)
-                        .wrap_err("Failed to create output file writer")
-                })?;
+                        .wrap_err("failed to create output file writer")
+                })
+                .warn_and_exit("Error");
 
             let writer = Arc::new(Mutex::new(writer));
 
@@ -147,18 +168,25 @@ fn main() -> Result<()> {
                     let cpu_ram = system.get_pid_tree_utilisation(pid);
 
                     let record = UsageRecord::new(start_time, system_memory, Some(cpu_ram), None);
-                    // let writer = wrt_guard.as_mut().unwrap();
-                    wrt_guard.serialize(record).unwrap();
-                    wrt_guard.flush().unwrap();
+                    wrt_guard
+                        .serialize(&record)
+                        .warn_and_exit(&format!("Failed to serialize record: {:?}", record));
+                    wrt_guard
+                        .flush()
+                        .warn_and_exit("Problem writing to underlying writer");
                 }
             });
 
             log::info!("Waiting for command to complete...");
             command_process.wait()?;
             log::info!("Waiting for monitoring thread...");
-            thread.join().unwrap();
+            thread.join().warn_and_exit("Problem joining thread");
             log::info!("Flushing report...");
-            writer.lock().unwrap().flush()?;
+            writer
+                .lock()
+                .warn_and_exit("Problem acquiring lock for writer")
+                .flush()
+                .warn_and_exit("Problem writing to underlying writer");
         }
     }
 
