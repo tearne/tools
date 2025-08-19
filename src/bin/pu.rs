@@ -109,6 +109,8 @@ fn main() -> Result<()> {
                     }
                 }
             }
+            log::info!("Waiting for command to complete...");
+            command_process.wait()?;
         }
 
         false => {
