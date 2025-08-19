@@ -77,6 +77,7 @@ fn main() -> Result<()> {
         let usage = gpu_api.get_pid_utilisation(&gpu_devices, pid, last_seen_timestamp, &mut system)?;
         match usage {
             Some(proc_usage) => {
+                log::info!("GPU process PID found: recording utilisation...");
                 last_seen_timestamp = Some(proc_usage.last_seen_timestamp);
 
                 let record = UsageRecord::new(
@@ -88,6 +89,7 @@ fn main() -> Result<()> {
                 wtr.flush().unwrap();
             }
             None => {
+                log::info!("GPU process not found. Most likely it has finished");
                 continue;
             }
         }
