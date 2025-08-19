@@ -78,7 +78,7 @@ fn main() -> Result<()> {
                 match command_process.try_wait().unwrap() {
                     None => std::thread::sleep(pause),
                     Some(_) => {
-                        log::info!("He's dead, Jim");
+                        log::info!("pid {} is dead", pid);
                         break;
                     }
                 }
@@ -91,7 +91,6 @@ fn main() -> Result<()> {
                 )?;
                 match usage {
                     Some(proc_usage) => {
-                        log::info!("GPU process PID found: recording utilisation...");
                         last_seen_timestamp = Some(proc_usage.last_seen_timestamp);
 
                         let record = UsageRecord::new(
@@ -135,6 +134,7 @@ fn main() -> Result<()> {
                 log::info!("System memory: {}", system_memory);
                 let mut wrt_guard = writer_cloned.lock().unwrap();
 
+                system.refresh_process_stats();
                 loop {
                     std::thread::sleep(pause);
 
@@ -142,7 +142,6 @@ fn main() -> Result<()> {
                         log::info!("pid {} is dead", pid);
                         break;
                     }
-
                     let cpu_ram = system.get_pid_tree_utilisation(pid);
 
                     let record = UsageRecord::new(start_time, system_memory, Some(cpu_ram), None);

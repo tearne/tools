@@ -123,7 +123,10 @@ impl GpuApi {
             .iter()
             .filter_map(
                 |p_sample| match children.contains(&Pid::from_u32(p_sample.pid)) {
-                    true => Some(p_sample.sm_util),
+                    true => {
+                        log::info!("{} -> {:?}", p_sample.pid, p_sample);
+                        Some(p_sample.sm_util)
+                    }
                     false => None,
                 },
             )
