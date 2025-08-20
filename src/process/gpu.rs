@@ -24,8 +24,10 @@ pub struct GpuApi {
 
 impl GpuApi {
     pub fn new() -> Result<Self> {
-        let bytes = Command::new("lspci").output().unwrap().stdout;
-        let stdout = from_utf8(&bytes).unwrap();
+        let bytes = Command::new("lspci").output()
+                .wrap_err("Failed to run `lspci`")?
+                .stdout;
+        let stdout = from_utf8(&bytes)?;
         if stdout.contains("NVIDIA") {
             log::debug!("`lspci`, confirms existence of a GPU");
         } else {
