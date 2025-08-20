@@ -19,15 +19,16 @@ use tools::{
 static MI_B: f32 = 2u64.pow(20) as f32;
 
 trait GracefulExit<T, E> {
-    fn warn_and_exit(self, msg: &str) -> T;
+    fn warn_and_exit(self, msg: &str, child_process: Option<&mut Child>) -> T;
 }
 
 impl<T, E: std::fmt::Debug> GracefulExit<T, E> for Result<T, E> {
-    fn warn_and_exit(self, msg: &str) -> T {
+    fn warn_and_exit(self, msg: &str, child_process: Option<&mut Child>) -> T {
         match self {
             Ok(val) => val,
             Err(e) => {
                 log::warn!("{}: {:?}", msg, e);
+                child_process.map(|child| child.kill());
                 std::process::exit(1);
             }
         }
@@ -62,7 +63,7 @@ fn start_process(command: &Vec<String>) -> Child {
     Command::new(&command[0])
         .args(&command[1..])
         .spawn()
-        .expect("Command failed to start.")
+        .warn_and_exit("Command failed to start", None)
 }
 
 fn main() -> Result<()> {
@@ -90,10 +91,10 @@ fn main() -> Result<()> {
 
             let mut last_seen_timestamp: Option<u64> = None;
             loop {
-                match command_process.try_wait().warn_and_exit(&format!(
-                    "Command process failed: {:?}",
-                    &cli.command.join(" ")
-                )) {
+                match command_process.try_wait().warn_and_exit(
+                    &format!("Command process failed: {:?}", &cli.command.join(" ")),
+                    Some(&mut command_process),
+                ) {
                     None => std::thread::sleep(pause),
                     Some(_) => {
                         log::info!("pid {} is dead", pid);
@@ -118,10 +119,14 @@ fn main() -> Result<()> {
                             Some(proc_usage.percent),
                         );
 
-                        wtr.serialize(&record)
-                            .warn_and_exit(&format!("Failed to serialize record: {:?}", record));
-                        wtr.flush()
-                            .warn_and_exit("Problem writing to underlying writer");
+                        wtr.serialize(&record).warn_and_exit(
+                            &format!("Failed to serialize record: {:?}", record),
+                            Some(&mut command_process),
+                        );
+                        wtr.flush().warn_and_exit(
+                            "Problem writing to underlying writer",
+                            Some(&mut command_process),
+                        );
                     }
                     None => {
                         log::info!("GPU process not found. Most likely it has finished");
@@ -140,7 +145,7 @@ fn main() -> Result<()> {
                     csv::Writer::from_path(&abs_path)
                         .wrap_err("failed to create output file writer")
                 })
-                .warn_and_exit("Error");
+                .warn_and_exit("Error", None);
 
             let writer = Arc::new(Mutex::new(writer));
 
@@ -149,6 +154,7 @@ fn main() -> Result<()> {
             let pid = Pid::from_u32(command_process.id());
 
             log::trace!("Started pid {}", pid);
+
             let pause = std::time::Duration::from_secs(cli.interval);
             let start_time = Local::now();
             let writer_cloned = writer.clone();
@@ -168,25 +174,24 @@ fn main() -> Result<()> {
                     let cpu_ram = system.get_pid_tree_utilisation(pid);
 
                     let record = UsageRecord::new(start_time, system_memory, Some(cpu_ram), None);
-                    wrt_guard
-                        .serialize(&record)
-                        .warn_and_exit(&format!("Failed to serialize record: {:?}", record));
-                    wrt_guard
-                        .flush()
-                        .warn_and_exit("Problem writing to underlying writer");
+                    wrt_guard.serialize(&record).unwrap();
+
+                    wrt_guard.flush().unwrap();
                 }
             });
 
             log::info!("Waiting for command to complete...");
-            command_process.wait()?;
+            command_process
+                .wait()
+                .warn_and_exit("Problem waiting for command process", Some(&mut command_process));
             log::info!("Waiting for monitoring thread...");
-            thread.join().warn_and_exit("Problem joining thread");
+            thread.join().warn_and_exit("Problem joining thread", None);
             log::info!("Flushing report...");
             writer
                 .lock()
-                .warn_and_exit("Problem acquiring lock for writer")
+                .warn_and_exit("Problem acquiring lock for writer", None)
                 .flush()
-                .warn_and_exit("Problem writing to underlying writer");
+                .warn_and_exit("Problem writing to underlying writer", None)
         }
     }
 
