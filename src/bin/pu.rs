@@ -1,3 +1,4 @@
+use backtrace::Backtrace;
 use chrono::{DateTime, Local};
 use clap::Parser;
 use color_eyre::eyre::{Context, Result};
@@ -15,7 +16,6 @@ use tools::{
         system::{CpuRamUsage, System},
     },
 };
-use backtrace::Backtrace;
 
 static MI_B: f32 = 2u64.pow(20) as f32;
 
@@ -29,8 +29,11 @@ impl<T, E: std::fmt::Debug> GracefulExit<T, E> for Result<T, E> {
             Ok(val) => val,
             Err(e) => {
                 log::warn!("{}: {:?}", msg, e);
-                child_process.map(|child| child.kill());
-                log::trace!("{:?}", Backtrace::new());
+                child_process.map(|child| {
+                    log::info!("Killing child process: {}", child.id());
+                    child.kill()
+                });
+                log::debug!("{:?}", Backtrace::new());
                 std::process::exit(1);
             }
         }
@@ -65,7 +68,10 @@ fn start_process(command: &Vec<String>) -> Child {
     Command::new(&command[0])
         .args(&command[1..])
         .spawn()
-        .warn_and_exit(&format!("Command failed to start: {:?}", command.join(" ")), None)
+        .warn_and_exit(
+            &format!("Command failed to start: {:?}", command.join(" ")),
+            None,
+        )
 }
 
 fn main() -> Result<()> {
@@ -79,11 +85,14 @@ fn main() -> Result<()> {
     match cli.nvml {
         true => {
             let gpu_api = GpuApi::new()?;
-            let gpu_devices = gpu_api.build_devices()?;
+            let gpu_devices = gpu_api
+                .build_devices()
+                .warn_and_exit("Problem finding GPU devices", None);
 
             let out_file = Path::new(&cli.file);
 
-            let mut wtr = csv::Writer::from_path(Path::new(out_file))?;
+            let mut wtr = csv::Writer::from_path(Path::new(out_file))
+                .warn_and_exit(&format!("Problem opening file: {}", cli.file), None);
 
             let mut command_process = start_process(&cli.command);
 
@@ -94,7 +103,7 @@ fn main() -> Result<()> {
             let mut last_seen_timestamp: Option<u64> = None;
             loop {
                 match command_process.try_wait().warn_and_exit(
-                    &format!("Command process failed: {:?}", &cli.command.join(" ")),
+                    &format!("Command process failed: {}", &cli.command.join(" ")),
                     Some(&mut command_process),
                 ) {
                     None => std::thread::sleep(pause),
@@ -104,12 +113,12 @@ fn main() -> Result<()> {
                     }
                 }
 
-                let usage = gpu_api.get_pid_utilisation(
-                    &gpu_devices,
-                    pid,
-                    last_seen_timestamp,
-                    &mut system,
-                )?;
+                let usage = gpu_api
+                    .get_pid_utilisation(&gpu_devices, pid, last_seen_timestamp, &mut system)
+                    .warn_and_exit(
+                        "Failed to get GPU PID utilisation",
+                        Some(&mut command_process),
+                    );
                 match usage {
                     Some(proc_usage) => {
                         last_seen_timestamp = Some(proc_usage.last_seen_timestamp);
@@ -137,7 +146,9 @@ fn main() -> Result<()> {
                 }
             }
             log::info!("Waiting for command to complete...");
-            command_process.wait()?;
+            command_process
+                .wait()
+                .warn_and_exit("Command wasn't running", Some(&mut command_process));
         }
 
         false => {
@@ -183,9 +194,10 @@ fn main() -> Result<()> {
             });
 
             log::info!("Waiting for command to complete...");
-            command_process
-                .wait()
-                .warn_and_exit("Problem waiting for command process", Some(&mut command_process));
+            command_process.wait().warn_and_exit(
+                "Problem waiting for command process",
+                Some(&mut command_process),
+            );
             log::info!("Waiting for monitoring thread...");
             thread.join().warn_and_exit("Problem joining thread", None);
             log::info!("Flushing report...");
