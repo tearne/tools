@@ -15,6 +15,7 @@ use tools::{
         system::{CpuRamUsage, System},
     },
 };
+use backtrace::Backtrace;
 
 static MI_B: f32 = 2u64.pow(20) as f32;
 
@@ -29,6 +30,7 @@ impl<T, E: std::fmt::Debug> GracefulExit<T, E> for Result<T, E> {
             Err(e) => {
                 log::warn!("{}: {:?}", msg, e);
                 child_process.map(|child| child.kill());
+                log::trace!("{:?}", Backtrace::new());
                 std::process::exit(1);
             }
         }
@@ -63,7 +65,7 @@ fn start_process(command: &Vec<String>) -> Child {
     Command::new(&command[0])
         .args(&command[1..])
         .spawn()
-        .warn_and_exit("Command failed to start", None)
+        .warn_and_exit(&format!("Command failed to start: {:?}", command.join(" ")), None)
 }
 
 fn main() -> Result<()> {
