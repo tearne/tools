@@ -119,31 +119,24 @@ fn main() -> Result<()> {
                         "Failed to get GPU PID utilisation",
                         Some(&mut command_process),
                     );
-                match usage {
-                    Some(proc_usage) => {
-                        last_seen_timestamp = Some(proc_usage.last_seen_timestamp);
 
-                        let record = UsageRecord::new(
-                            start_time,
-                            system_memory,
-                            None,
-                            Some(proc_usage.percent),
-                        );
+                last_seen_timestamp = Some(usage.last_seen_timestamp);
 
-                        wtr.serialize(&record).warn_and_exit(
-                            &format!("Failed to serialize record: {:?}", record),
-                            Some(&mut command_process),
-                        );
-                        wtr.flush().warn_and_exit(
-                            "Problem writing to underlying writer",
-                            Some(&mut command_process),
-                        );
-                    }
-                    None => {
-                        log::info!("GPU process not found. Most likely it has finished");
-                        continue;
-                    }
-                }
+                let record = UsageRecord::new(
+                    start_time,
+                    system_memory,
+                    None,
+                    Some(usage.percent),
+                );
+
+                wtr.serialize(&record).warn_and_exit(
+                    &format!("Failed to serialize record: {:?}", record),
+                    Some(&mut command_process),
+                );
+                wtr.flush().warn_and_exit(
+                    "Problem writing to underlying writer",
+                    Some(&mut command_process),
+                );
             }
             log::info!("Waiting for command to complete...");
             command_process

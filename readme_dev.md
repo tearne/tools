@@ -16,5 +16,7 @@ sudo apt update && sudo apt install gpu-burn nvtop
 ```
 
 ```sh
-cargo run --bin gpu_test -- -vvv -- gpu-burn 10
+cargo run --bin pu -- --nvml -vvv -- gpu-burn 10
 ```
+
+Use `nvtop` to monitor
