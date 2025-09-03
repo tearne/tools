@@ -1,10 +1,9 @@
-use backtrace::Backtrace;
 use chrono::{DateTime, Local};
 use clap::Parser;
-use color_eyre::eyre::Result;
+use color_eyre::eyre::{Context, Result};
 use std::{
     path::Path,
-    process::{Child, Command},
+    process::Command,
 };
 use sysinfo::Pid;
 use tools::{
@@ -16,27 +15,6 @@ use tools::{
 };
 
 static MI_B: f32 = 2u64.pow(20) as f32;
-
-trait GracefulExit<T, E> {
-    fn warn_and_exit(self, msg: &str, child_process: Option<&mut Child>) -> T;
-}
-
-impl<T, E: std::fmt::Debug> GracefulExit<T, E> for Result<T, E> {
-    fn warn_and_exit(self, msg: &str, child_process: Option<&mut Child>) -> T {
-        match self {
-            Ok(val) => val,
-            Err(e) => {
-                log::warn!("{}: {:?}", msg, e);
-                child_process.map(|child| {
-                    log::info!("Killing child process: {}", child.id());
-                    child.kill()
-                });
-                log::debug!("{:?}", Backtrace::new());
-                std::process::exit(1);
-            }
-        }
-    }
-}
 
 #[derive(Parser)]
 #[command(version, about)]
@@ -62,16 +40,6 @@ struct Cli {
     file: String,
 }
 
-fn start_process(command: &Vec<String>) -> Child {
-    Command::new(&command[0])
-        .args(&command[1..])
-        .spawn()
-        .warn_and_exit(
-            &format!("Command failed to start: {:?}", command.join(" ")),
-            None,
-        )
-}
-
 fn main() -> Result<()> {
     color_eyre::install()?;
     let cli = Cli::parse();
@@ -85,28 +53,28 @@ fn main() -> Result<()> {
 
     let out_file = Path::new(&cli.file);
 
-    let mut wtr = csv::Writer::from_path(Path::new(out_file))
-        .warn_and_exit(&format!("Problem opening file: {}", cli.file), None);
+    let mut wtr = csv::Writer::from_path(Path::new(out_file))?;
 
-    let mut command_process = start_process(&cli.command);
+    let mut child_process = Command::new(&&cli.command[0])
+        .args(&cli.command[1..])
+        .spawn()?;
 
-    let pid = Pid::from_u32(command_process.id());
+    let pid = Pid::from_u32(child_process.id());
     let pause = std::time::Duration::from_secs(cli.interval);
     let start_time = Local::now();
 
     system.refresh_process_stats();
 
     loop {
-        std::thread::sleep(pause);
-        match command_process.try_wait().warn_and_exit(
-            &format!("Command process failed: {}", &cli.command.join(" ")),
-            Some(&mut command_process),
-        ) {
-            None => std::thread::sleep(pause),
+        let exit_status = child_process.try_wait().wrap_err_with(|| {
+            format!("Abnormal User command status ({})", &cli.command.join(" "))
+        })?;
+        match exit_status {
             Some(_) => {
                 log::info!("pid {} is dead", pid);
                 break;
             }
+            None => std::thread::sleep(pause),
         }
 
         let gpu_usage_opt = gpu_api_opt
@@ -118,20 +86,13 @@ fn main() -> Result<()> {
 
         let record = UsageRecord::new(start_time, system_memory, cpu_ram, gpu_usage_opt);
 
-        wtr.serialize(&record).warn_and_exit(
-            &format!("Failed to serialize record: {:?}", record),
-            Some(&mut command_process),
-        );
-        wtr.flush().warn_and_exit(
-            "Problem writing to underlying writer",
-            Some(&mut command_process),
-        );
+        wtr.serialize(&record)
+            .wrap_err_with(|| format!("Failed to serialize record: {:?}", record))?;
+        wtr.flush()?;
     }
 
     log::info!("Waiting for command to complete...");
-    command_process
-        .wait()
-        .warn_and_exit("Command wasn't running", Some(&mut command_process));
+    child_process.wait()?;
 
     log::info!("Usage report written to {}", &cli.file);
 
@@ -167,7 +128,10 @@ impl UsageRecord {
                 100.0 * (cpu_ram.memory_bytes as f32 / system_memory)
             ),
             ram_mb: format!("{:.1}", cpu_ram.memory_bytes as f32 / MI_B),
-            gpu_percent: gpu_percent.as_ref().map(|value| format!("{:.1}", value)).unwrap_or_else(||"NA".into()),
+            gpu_percent: gpu_percent
+                .as_ref()
+                .map(|value| format!("{:.1}", value))
+                .unwrap_or_else(|| "NA".into()),
         }
     }
 }
