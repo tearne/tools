@@ -1,9 +1,18 @@
-use std::{fs::canonicalize, path::Path, process::Command, sync::{Arc, Mutex}};
 use chrono::{DateTime, Local};
 use clap::Parser;
 use color_eyre::eyre::{Context, Result};
+use std::{
+    path::Path,
+    process::Command,
+};
 use sysinfo::Pid;
-use tools::{log::setup_logging, process::system::{CpuRamUsage, System}};
+use tools::{
+    log::setup_logging,
+    process::{
+        gpu::{Gpu, GpuApi},
+        system::{CpuRamUsage, System},
+    },
+};
 
 static MI_B: f32 = 2u64.pow(20) as f32;
 
@@ -14,6 +23,9 @@ struct Cli {
     /// Verbose mode (-v, -vv, -vvv)
     #[structopt(short, long, action = clap::ArgAction::Count)]
     verbose: u8,
+
+    #[structopt(short, long, action)]
+    nvml: bool,
 
     /// CPU polling interval (seconds)
     #[structopt(short, long, default_value = "1")]
@@ -33,59 +45,59 @@ fn main() -> Result<()> {
     let cli = Cli::parse();
     setup_logging(cli.verbose);
 
-    let writer = canonicalize(Path::new(&cli.file))
-        .wrap_err("failed to canonicalize path")
-        .and_then(|abs_path|{
-            csv::Writer::from_path(&abs_path)
-                .wrap_err("Failed to create output file writer")
-        })?;
-
-    let writer = Arc::new(Mutex::new(writer));
-    let mut command_process = Command::new(&cli.command[0])
-        .args(&cli.command[1..])
-        .spawn()
-        .expect("Command failed to start.");
     let mut system = System::new();
+    let system_memory = system.total_memory() as f32;
 
-    let pid = Pid::from_u32(command_process.id());
-    log::trace!("Started pid {}", pid);
+    let gpu_api_opt = if cli.nvml { Some(GpuApi::new()?) } else { None };
+    let mut gpu_dev_opt = gpu_api_opt.as_ref().map(|api| Gpu::new(&api)).transpose()?;
+
+    let out_file = Path::new(&cli.file);
+
+    let mut wtr = csv::Writer::from_path(Path::new(out_file))?;
+
+    let mut child_process = Command::new(&&cli.command[0])
+        .args(&cli.command[1..])
+        .spawn()?;
+
+    let pid = Pid::from_u32(child_process.id());
     let pause = std::time::Duration::from_secs(cli.interval);
     let start_time = Local::now();
-    let writer_cloned = writer.clone();
 
-    let thread = std::thread::spawn(move ||{     
-        let system_memory = system.total_memory() as f32;
-        log::info!("System memory: {}", system_memory);
-        let mut wrt_guard = writer_cloned.lock().unwrap();
+    system.refresh_process_stats();
 
-        loop{
-            std::thread::sleep(pause);
-
-            if !system.pid_is_alive(pid) {
+    loop {
+        let exit_status = child_process.try_wait().wrap_err_with(|| {
+            format!("Abnormal User command status ({})", &cli.command.join(" "))
+        })?;
+        match exit_status {
+            Some(_) => {
                 log::info!("pid {} is dead", pid);
                 break;
             }
-
-            let cpu_ram = system.get_pid_tree_utilisation(pid);
-
-            let record = UsageRecord::new(start_time, cpu_ram, system_memory);
-            // let writer = wrt_guard.as_mut().unwrap();
-            wrt_guard.serialize(record).unwrap();
-            wrt_guard.flush().unwrap();
+            None => std::thread::sleep(pause),
         }
-    });
+
+        let gpu_usage_opt = gpu_api_opt
+            .as_ref()
+            .map(|api| api.get_pid_utilisation(gpu_dev_opt.as_mut().unwrap(), pid, &mut system))
+            .transpose()?;
+
+        let cpu_ram = system.get_pid_tree_utilisation(pid);
+
+        let record = UsageRecord::new(start_time, system_memory, cpu_ram, gpu_usage_opt);
+
+        wtr.serialize(&record)
+            .wrap_err_with(|| format!("Failed to serialize record: {:?}", record))?;
+        wtr.flush()?;
+    }
 
     log::info!("Waiting for command to complete...");
-    command_process.wait()?;
-    log::info!("Waiting for monitoring thread...");
-    thread.join().unwrap();
-    log::info!("Flushing report...");
-    writer.lock().unwrap().flush()?;
+    child_process.wait()?;
+
     log::info!("Usage report written to {}", &cli.file);
 
     Ok(())
 }
-
 
 #[derive(Debug, serde::Serialize)]
 struct UsageRecord {
@@ -93,19 +105,33 @@ struct UsageRecord {
     elapsed_seconds: usize,
     cpu_percent: String,
     ram_percent: String,
-    ram_mb: String
+    ram_mb: String,
+    gpu_percent: String,
 }
 
 impl UsageRecord {
-    fn new(start_time: DateTime<Local>, cpu_ram: CpuRamUsage, system_memory: f32) -> Self {
+    fn new(
+        start_time: DateTime<Local>,
+        system_memory: f32,
+        cpu_ram: CpuRamUsage,
+        gpu_percent: Option<u32>,
+    ) -> Self {
         let now = Local::now();
         let elapsed_seconds = (now - start_time).as_seconds_f32();
+
         Self {
             timestamp: now.format("%Y-%m-%d %H:%M:%S").to_string(),
             elapsed_seconds: elapsed_seconds.round() as usize,
             cpu_percent: format!("{:.1}", cpu_ram.cpu_percent),
-            ram_percent: format!("{:.1}", 100.0 * (cpu_ram.memory_bytes as f32 / system_memory)),
+            ram_percent: format!(
+                "{:.1}",
+                100.0 * (cpu_ram.memory_bytes as f32 / system_memory)
+            ),
             ram_mb: format!("{:.1}", cpu_ram.memory_bytes as f32 / MI_B),
+            gpu_percent: gpu_percent
+                .as_ref()
+                .map(|value| format!("{:.1}", value))
+                .unwrap_or_else(|| "NA".into()),
         }
     }
 }

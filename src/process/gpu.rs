@@ -1,16 +1,38 @@
 use std::{process::Command, str::from_utf8};
 
-use nvml_wrapper::{struct_wrappers::device::ProcessUtilizationSample, Device, Nvml};
-use color_eyre::{eyre::{bail, Context, ContextCompat}, Result};
+use color_eyre::{
+    Result,
+    eyre::{Context, bail},
+};
+use nvml_wrapper::{
+    Device, Nvml, error::NvmlError, struct_wrappers::device::ProcessUtilizationSample,
+};
 use sysinfo::Pid;
 
 use crate::process::system::System;
 
-pub struct GpuDevices<'a>(Vec<Device<'a>>);
+pub struct Gpu<'a>{
+    devices: Vec<Device<'a>>,
+    last_sample_time: Option<u64>,
+}
+impl<'a> Gpu<'a> {
+    pub fn new(api: &'a GpuApi) -> Result<Self> {
+        let num_devices = api.nvml.device_count()?;
+        let devices = (0..num_devices)
+            .map(|idx| {
+                api.nvml
+                    .device_by_index(idx)
+                    .wrap_err("Device initialisation failure")
+            })
+            .collect::<Result<Vec<Device<'a>>>>()?;
 
-pub struct Usage{
-    pub percent: u32,
-    pub last_seen_timestamp: u64
+        log::debug!("Found devices: {:?}", &devices);
+
+        Ok(Gpu{
+            devices,
+            last_sample_time: None,
+        })
+    }
 }
 
 pub struct GpuApi {
@@ -19,82 +41,81 @@ pub struct GpuApi {
 
 impl GpuApi {
     pub fn new() -> Result<Self> {
-        let bytes = Command::new("lspci").output().unwrap().stdout;
-        let stdout = from_utf8(&bytes).unwrap();
+        let bytes = Command::new("lspci")
+            .output()
+            .wrap_err("Failed to run `lspci`")?
+            .stdout;
+        let stdout = from_utf8(&bytes)?;
         if stdout.contains("NVIDIA") {
             log::debug!("`lspci`, confirms existence of a GPU");
         } else {
             bail!("`lspci` did not confirm the presence of a GPU")
         }
 
-        Ok(Self { nvml: Nvml::init()? })
-    }
-
-    pub fn build_devices<'a>(&'a self) -> Result<GpuDevices<'a>> {
-        let num_devices = self.nvml.device_count()?;
-        let devices = (0..num_devices)
-            .map(|idx|self.nvml.device_by_index(idx).wrap_err("Device initialisation failure"))
-            .collect::<Result<Vec<Device<'a>>>>()?;
-
-        log::debug!("Found devices: {:?}", &devices);
-        
-        Ok(GpuDevices(devices))
+        Ok(Self {
+            nvml: Nvml::init()?,
+        })
     }
 
     fn get_all_utilisation(
         &self,
-        devices: &GpuDevices,
-        last_seen_timestamp: Option<u64>,
-    ) -> Result<Vec<ProcessUtilizationSample>>
-    {
-        let stats: Result<Vec<ProcessUtilizationSample>> = devices.0
+        gpu: &Gpu,
+    ) -> Result<Vec<ProcessUtilizationSample>> {
+        gpu.devices
             .iter()
-            .map(|d|{
-                d.process_utilization_stats(last_seen_timestamp)
-                    .wrap_err("Failed to get device utilisation sample")
-            })
-            .try_fold(Vec::<ProcessUtilizationSample>::new(), |mut acc, res_samples| -> Result<_>{
-                acc.extend(res_samples?);
-                Result::Ok(acc)
-            });
-
-        stats
+            .map(|d|
+                d.process_utilization_stats(gpu.last_sample_time).or_else(|e|{
+                    match e {
+                        // It's ok if we don't find the PID, just assume zero usage
+                        NvmlError::NotFound => Ok(Vec::new()), 
+                        // But if we get another error, that's serious enough to propagate
+                        _ => Err(e).wrap_err_with(||"Unexpected NvmlError when querying usage")
+                    }
+                })
+            )
+            .try_fold(
+                Vec::<ProcessUtilizationSample>::new(),
+                |mut acc, res_samples| {
+                    acc.extend(res_samples?);
+                    Result::Ok(acc)
+                },
+            )
     }
+
 
     pub fn get_pid_utilisation(
         &self,
-        devices: &GpuDevices,
+        gpu: &mut Gpu,
         pid: Pid,
-        last_seen_timestamp: Option<u64>,
-        system: &mut System
-    ) -> Result<Usage> {
+        system: &mut System,
+    ) -> Result<u32> {
         let children = system.get_pid_tree(pid, false);
-        log::trace!(
-            "Process {} has Children {:?}",
-            pid,
-            children
-        );
+        log::trace!("Process {} has Children {:?}", pid, children);
 
-        let all_utilisation = self.get_all_utilisation(devices, last_seen_timestamp)?;
-        let max_timestamp: u64 = all_utilisation.iter()
+        let all_utilisation = self.get_all_utilisation(gpu)?;
+
+        // Needed to keep track of when we last looked at GPU utilisation
+        let max_timestamp: Option<u64> = all_utilisation
+            .iter()
             .max_by_key(|sample| sample.timestamp)
-            .map(|sample| sample.timestamp)
-            .wrap_err("Failed to identify max timestamp from GPU process utilisation data.")?;
+            .map(|sample| sample.timestamp);
 
+        gpu.last_sample_time = max_timestamp;
+
+        //TODO sum is a percentage?
         let sum = all_utilisation
             .iter()
-            .filter_map(|p_sample|
-                match children.contains(&Pid::from_u32(p_sample.pid)) {
-                    true => Some(p_sample.sm_util),
+            .filter_map(
+                |p_sample| match children.contains(&Pid::from_u32(p_sample.pid)) {
+                    true => {
+                        log::info!("{} -> {:?}", p_sample.pid, p_sample);
+                        Some(p_sample.sm_util)
+                    }
                     false => None,
-                }
+                },
             )
             .sum();
 
-        Ok(Usage { 
-            percent: sum, 
-            last_seen_timestamp: max_timestamp
-        })
+        Ok(sum)
     }
-
 }

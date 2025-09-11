@@ -1,6 +1,11 @@
 # Changelog
 
 
+## [pending] - DD/MM/YYYY
+### Changed
+### Added
+### Fixed
+
 ## [0.3.1] - 27/06/2025
 ### Fixed
 - `bu`'s help text
