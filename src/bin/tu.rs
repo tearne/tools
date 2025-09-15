@@ -36,7 +36,7 @@ struct Cli {
     command: Vec<String>,
 
     /// Output CSV file
-    #[structopt(short, long, default_value = "process_usage.csv")]
+    #[structopt(short, long, default_value = "task_usage.csv")]
     file: String,
 }
 

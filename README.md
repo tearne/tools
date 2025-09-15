@@ -1,6 +1,6 @@
 # Overview
-## `pu`
-Monitors ***p***rocess ***u***sage (CPU & RAM) and saves the time series data to a CSV file.
+## `tu`
+Monitors ***t***ask ***u***sage (CPU, GPU & RAM) and saves the time series data to a CSV file.
 
 Originally created to see if containers were over-allocated resource in serverless infrastructure.
 
@@ -39,11 +39,11 @@ Delete all versions of an object under bucket/prefix
 bu destroy my-bucket/somePrefix
 ```
 
-# `pu` example
+# `tu` example
 ```
-pu -- start_my_minecraft_server.sh
+tu -- start_my_minecraft_server.sh
 ```
-It will generate a CSV file: `process_usage.csv`.
+It will generate a CSV file: `task_usage.csv`.
 
 |timestamp|elapsed_seconds|cpu_percent|ram_percent|ram_mb|
 |-|-|-|-|-|
@@ -53,6 +53,6 @@ It will generate a CSV file: `process_usage.csv`.
 |2025-05-12 20:06:30|4|132.1|9.9|789.5|
 |...|...|...|...|...|
 
-The [example Python code](./python/pu/plot.py) shows how to plot this with Polars and Seaborn.  The simplest way to run it is to instal `uv` (fast Python package manager) and then run the script as an executable `python/pu/plot.py`.
+The [example Python code](./python/tu/plot.py) shows how to plot this with Polars and Seaborn.  The simplest way to run it is to instal `uv` (fast Python package manager) and then run the script as an executable `python/tu/plot.py`.
 
-![graph](./python/pu/seaborn_plot.png)
+![graph](./python/tu/seaborn_plot.png)
