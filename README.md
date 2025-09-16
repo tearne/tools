@@ -1,6 +1,6 @@
 # Overview
-## `pu`
-Monitors ***p***rocess ***u***sage (CPU & RAM) and saves the time series data to a CSV file.
+## `tu`
+Monitors ***t***ask ***u***sage (CPU, GPU & RAM) and saves the time series data to a CSV file.
 
 Originally created to see if containers were over-allocated resource in serverless infrastructure.
 
@@ -39,20 +39,35 @@ Delete all versions of an object under bucket/prefix
 bu destroy my-bucket/somePrefix
 ```
 
-# `pu` example
+# `tu` examples
 ```
-pu -- start_my_minecraft_server.sh
+tu -- start_my_minecraft_server.sh
 ```
-It will generate a CSV file: `process_usage.csv`.
+It will generate a CSV file: `task_usage.csv`.
 
-|timestamp|elapsed_seconds|cpu_percent|ram_percent|ram_mb|
-|-|-|-|-|-|
-|2025-05-12 20:06:27|1|0.0|5|9|470.5|
-|2025-05-12 20:06:28|2|180.7|8.8|700.5|
-|2025-05-12 20:06:29|3|218.7|9.3|735.0|
-|2025-05-12 20:06:30|4|132.1|9.9|789.5|
-|...|...|...|...|...|
+|timestamp|elapsed_seconds|cpu_percent|ram_percent|ram_mb|gpu_percent
+|-|-|-|-|-|-|
+|2025-05-12 20:06:27|1|0.0|9|470.5|NA|
+|2025-05-12 20:06:28|2|180.7|8.8|700.5|NA|
+|2025-05-12 20:06:29|3|218.7|9.3|735.0|NA|
+|2025-05-12 20:06:30|4|132.1|9.9|789.5|NA|
+|...|...|...|...|...|...|
 
-The [example Python code](./python/pu/plot.py) shows how to plot this with Polars and Seaborn.  The simplest way to run it is to instal `uv` (fast Python package manager) and then run the script as an executable `python/pu/plot.py`.
+The [example Python code](./python/tu/plot.py) shows how to plot this with Polars and Seaborn.  The simplest way to run it is to instal `uv` (fast Python package manager) and then run the script as an executable `python/tu/plot.py`.
 
-![graph](./python/pu/seaborn_plot.png)
+![graph](./python/tu/seaborn_plot.png)
+
+## GPU utilisation
+```sh
+tu -- --nvml -vvv -- gpu-burn 6
+```
+It will generate a CSV file: `task_usage.csv`.
+|timestamp|elapsed_seconds|cpu_percent|ram_percent|ram_mb|gpu_percent
+|-|-|-|-|-|-|
+|2025-09-15 13:33:05|1|2.6|1.5|232.3|0|
+|2025-09-15 13:33:06|2|2.9|3.9|620.8|0|
+|2025-09-15 13:33:07|3|0.0|9.0|1415.6|23|
+|2025-09-15 13:33:08|4|0.0|9.0|1415.6|97|
+|2025-09-15 13:33:09|5|0.0|9.0|1415.6|100|
+|...|...|...|...|...|...|
+
