@@ -45,7 +45,7 @@ tu -- start_my_minecraft_server.sh
 ```
 It will generate a CSV file: `task_usage.csv`.
 
-|timestamp|elapsed_seconds|cpu_percent|ram_percent|ram_mb|gpu_percent
+|timestamp|elapsed_seconds|cpu_percent|ram_percent|ram_mb|gpu_percent|
 |-|-|-|-|-|-|
 |2025-05-12 20:06:27|1|0.0|9|470.5|NA|
 |2025-05-12 20:06:28|2|180.7|8.8|700.5|NA|
@@ -62,7 +62,7 @@ The [example Python code](./python/tu/plot.py) shows how to plot this with Polar
 tu -- --nvml -vvv -- gpu-burn 6
 ```
 It will generate a CSV file: `task_usage.csv`.
-|timestamp|elapsed_seconds|cpu_percent|ram_percent|ram_mb|gpu_percent
+|timestamp|elapsed_seconds|cpu_percent|ram_percent|ram_mb|gpu_percent|
 |-|-|-|-|-|-|
 |2025-09-15 13:33:05|1|2.6|1.5|232.3|0|
 |2025-09-15 13:33:06|2|2.9|3.9|620.8|0|
