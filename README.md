@@ -59,7 +59,7 @@ The [example Python code](./python/tu/plot.py) shows how to plot this with Polar
 
 ## GPU utilisation
 ```sh
-tu -- --nvml -vvv -- gpu-burn 6
+tu --nvml -vvv -- gpu-burn 6
 ```
 It will generate a CSV file: `task_usage.csv`.
 |timestamp|elapsed_seconds|cpu_percent|ram_percent|ram_mb|gpu_percent|
