@@ -8,12 +8,12 @@ pub fn setup_logging(level: u8) -> Result<(), color_eyre::eyre::Error> {
             .to_str().wrap_err("utf-8 validity failed")?
             .to_owned();
 
-        let crate_name = env!("CARGO_CRATE_NAME");
+        let crate_name: &'static str = env!("CARGO_CRATE_NAME");
 
         env_logger::builder()
             .filter_level(dep_level)
             .filter_module(&prog, local_level)
-            .filter_module(&crate_name, local_level)            
+            .filter_module(crate_name, local_level)            
             .init();
         println!("Logging filter level for '{}' and '{}': {}", &prog, crate_name, local_level);
         println!("Dependency logging filter level: {}", dep_level);
