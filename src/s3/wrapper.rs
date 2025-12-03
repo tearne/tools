@@ -140,9 +140,10 @@ impl S3Wrapper {
 
             let it = delete_markers.into_iter().map(|item| {
                 ObjectIdentifier::builder()
-                .set_version_id(item.version_id)
-                .set_key(item.key)
-                .build().expect("Build error for delete markers.")
+                    .set_version_id(item.version_id)
+                    .set_key(item.key)
+                    .build()
+                    .expect("Build error for delete markers.")
             });
             object_identifiers.extend(it);
 
@@ -162,9 +163,9 @@ impl S3Wrapper {
                     .bucket(bucket)
                     .delete(
                         Delete::builder()
-                            .set_objects(Some(object_identifiers))
-                            .build()
-                            .expect("Build error for delete builder."),
+                                .set_objects(Some(object_identifiers))
+                                .build()
+                                .expect("Build error for delete builder."),
                     )
                     .send()
                     .await?;
