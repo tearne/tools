@@ -1,6 +1,6 @@
 use std::fmt::Display;
 
-use color_eyre::{Result, eyre::eyre};
+use color_eyre::{Result, eyre::{OptionExt}};
 use regex::Regex;
 
 pub struct S3Location {
@@ -16,15 +16,15 @@ impl S3Location {
 
         let captures = s3_path_re
             .captures(s3_location)
-            .ok_or_else(|| eyre!("No regex matches"))?;
+            .ok_or_eyre("No regex matches.")?;
         let bucket = captures
             .name("bucket")
-            .expect("Bucket capture group found no matches.")
+            .ok_or_eyre("Bucket capture group found no matches.")?
             .as_str()
             .to_string();
         let prefix = captures
             .name("prefix")
-            .expect("Prefix capture group found no matches.")
+            .ok_or_eyre("Prefix capture group found no matches.")?
             .as_str();
         let prefix = prefix.strip_prefix('/').unwrap_or(prefix);
         let prefix = prefix.strip_suffix('/').unwrap_or(prefix).to_string();

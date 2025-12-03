@@ -3,7 +3,7 @@ use std::{env, path::Path, process::Command};
 use aws_sdk_s3::{Client};
 use bytesize::ByteSize;
 use tokio::runtime::Runtime;
-use color_eyre::{eyre::WrapErr, Result};
+use color_eyre::{Result, eyre::{OptionExt, WrapErr}};
 
 use crate::s3::size::{Stats, VersionData};
 
@@ -160,7 +160,7 @@ fn test_with_versions() -> Result<()> {
         orphaned_vers: Stats { num_objects: 1, size: ByteSize(38) },
     };
 
-    assert_eq!(expected_versions, report.versions.expect("Report hyas no versions."));
+    assert_eq!(expected_versions, report.versions.ok_or_eyre("Report has no versions.")?);
     
     Ok(())
 }

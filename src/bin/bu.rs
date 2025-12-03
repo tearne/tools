@@ -1,7 +1,7 @@
 use aws_sdk_s3::Client;
 
 use clap::Parser;
-use color_eyre::Result;
+use color_eyre::{Result, eyre::Context};
 use dialoguer::Confirm;
 use tokio::runtime::Runtime;
 use tools::{
@@ -73,8 +73,7 @@ fn main() -> Result<()> {
                         url
                     ))
                     .default(false)
-                    .interact()
-                    .expect("Interaction error")
+                    .interact().wrap_err("Interaction error")?
                 {
                     println!("*** Action confirmed ");
                     let s3_location = S3Location::parse(&url)?;
