@@ -46,8 +46,8 @@ enum Command{
 
 fn main() -> Result<()> {
     let cli = Cli::parse();
-    setup_logging(cli.verbose);
-    let runtime = Runtime::new().unwrap();
+    setup_logging(cli.verbose)?;
+    let runtime = Runtime::new()?;
 
     runtime.block_on(async {
         let config = aws_config::load_from_env().await;

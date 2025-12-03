@@ -29,7 +29,7 @@ impl StorageTestHelper {
             };
 
 
-        let runtime = Runtime::new().unwrap();   
+        let runtime = Runtime::new()?;   
         let s3_wrapper = {
             let client = {
                 let config = runtime.block_on(async {aws_config::load_from_env().await});
@@ -160,7 +160,7 @@ fn test_with_versions() -> Result<()> {
         orphaned_vers: Stats { num_objects: 1, size: ByteSize(38) },
     };
 
-    assert_eq!(expected_versions, report.versions.unwrap());
+    assert_eq!(expected_versions, report.versions.expect("Report hyas no versions."));
     
     Ok(())
 }

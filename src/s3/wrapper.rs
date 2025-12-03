@@ -3,7 +3,7 @@ use std::io::Write;
 use aws_sdk_s3::{operation::{list_object_versions::ListObjectVersionsOutput, list_objects_v2::ListObjectsV2Output}, types::{BucketVersioningStatus, Delete, Object, ObjectIdentifier, ObjectVersion}, Client};
 use human_format::Formatter;
 
-use color_eyre::{eyre::OptionExt, Result};
+use color_eyre::{Result, eyre::{Context, OptionExt}};
 
 
 pub struct S3Wrapper {
@@ -12,7 +12,7 @@ pub struct S3Wrapper {
 
 impl S3Wrapper {
     pub async fn get_object_versions(&self, bucket: &str, prefix: &str, verbose: bool) -> Result<Vec<ObjectVersion>> {
-        let pages = self.get_versions(bucket, prefix, verbose).await.unwrap();
+        let pages = self.get_versions(bucket, prefix, verbose).await?;
         let object_versions: Vec<ObjectVersion> = pages.into_iter()
             .flat_map(|page|
                 page.versions.unwrap_or_default())
@@ -102,14 +102,14 @@ impl S3Wrapper {
         let mut h = std::io::stdout();
         loop {
             if verbose {
-                write!(h, "." ).unwrap();
-                h.flush().unwrap();
+                write!(h, "." )?;
+                h.flush()?;
             }
 
             let out = next_page(&self.client, bucket, prefix, next_key, next_version).await?;
 
-            next_key = out.next_key_marker.clone().map(String::from);
-            next_version = out.next_version_id_marker.clone().map(String::from);
+            next_key = out.next_key_marker.clone();
+            next_version = out.next_version_id_marker.clone();
             acc.push(out);
 
             let records_so_far = acc.iter().map(|v|v.versions().len()).sum::<usize>();
@@ -140,10 +140,9 @@ impl S3Wrapper {
 
             let it = delete_markers.into_iter().map(|item| {
                 ObjectIdentifier::builder()
-                    .set_version_id(item.version_id)
-                    .set_key(item.key)
-                    .build()
-                    .unwrap()
+                .set_version_id(item.version_id)
+                .set_key(item.key)
+                .build().expect("Build error for delete markers.")
             });
             object_identifiers.extend(it);
 
@@ -152,7 +151,7 @@ impl S3Wrapper {
                     .set_version_id(item.version_id)
                     .set_key(item.key)
                     .build()
-                    .unwrap()
+                    .expect("Build error for object versions.")
             });
             object_identifiers.extend(it);
 
@@ -165,7 +164,7 @@ impl S3Wrapper {
                         Delete::builder()
                             .set_objects(Some(object_identifiers))
                             .build()
-                            .unwrap(),
+                            .expect("Build error for delete builder."),
                     )
                     .send()
                     .await?;

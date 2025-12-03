@@ -1,11 +1,11 @@
 use log::LevelFilter;
+use color_eyre::{Report, Result, eyre::{Context, ContextCompat}};
 
-pub fn setup_logging(level: u8) {
-    fn set_log_level(local_level: LevelFilter, dep_level:  LevelFilter) {
-        let prog: String = std::env::current_exe()
-            .unwrap()
-            .file_name().unwrap()
-            .to_str().unwrap()
+pub fn setup_logging(level: u8) -> Result<(), color_eyre::eyre::Error> {
+    fn set_log_level(local_level: LevelFilter, dep_level:  LevelFilter) -> Result<(), color_eyre::eyre::Error> {
+        let prog: String = std::env::current_exe().wrap_err("Error getting current_exe")?
+            .file_name().wrap_err("File path terminated in ..")?
+            .to_str().wrap_err("utf-8 validity failed")?
             .to_owned();
 
         let crate_name = env!("CARGO_CRATE_NAME");
@@ -20,13 +20,15 @@ pub fn setup_logging(level: u8) {
 
         log::info!("Logging filter level for '{}' and '{}': {}", &prog, crate_name, local_level);
         log::info!("Dependency logging filter level: {}", dep_level);
+        Ok(())
     }
 
     match level {
-        0 => set_log_level(LevelFilter::Warn, LevelFilter::Warn),
-        1 => set_log_level(LevelFilter::Info, LevelFilter::Warn),
-        2 => set_log_level(LevelFilter::Debug, LevelFilter::Warn),
-        3 => set_log_level(LevelFilter::Trace, LevelFilter::Info),
+        0 => set_log_level(LevelFilter::Warn, LevelFilter::Warn)?,
+        1 => set_log_level(LevelFilter::Info, LevelFilter::Warn)?,
+        2 => set_log_level(LevelFilter::Debug, LevelFilter::Warn)?,
+        3 => set_log_level(LevelFilter::Trace, LevelFilter::Info)?,
         _ => panic!("Too many levels of verbosity.  You can have up to 3."),
     };
+    Ok(())
 }
