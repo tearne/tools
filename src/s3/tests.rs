@@ -1,8 +1,8 @@
-use std::{env, path::{Path, PathBuf}, process::Command};
+use std::{env, path::Path, process::Command};
 
 use aws_sdk_s3::{Client};
 use bytesize::ByteSize;
-use tokio::runtime::{Handle, Runtime};
+use tokio::runtime::Runtime;
 use color_eyre::{eyre::WrapErr, Result};
 
 use crate::s3::size::{Stats, VersionData};

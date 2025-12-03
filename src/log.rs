@@ -1,5 +1,5 @@
 use log::LevelFilter;
-use color_eyre::{Report, Result, eyre::{Context, ContextCompat}};
+use color_eyre::{Result, eyre::{Context, ContextCompat}};
 
 pub fn setup_logging(level: u8) -> Result<(), color_eyre::eyre::Error> {
     fn set_log_level(local_level: LevelFilter, dep_level:  LevelFilter) -> Result<(), color_eyre::eyre::Error> {

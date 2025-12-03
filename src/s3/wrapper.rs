@@ -3,7 +3,7 @@ use std::io::Write;
 use aws_sdk_s3::{operation::{list_object_versions::ListObjectVersionsOutput, list_objects_v2::ListObjectsV2Output}, types::{BucketVersioningStatus, Delete, Object, ObjectIdentifier, ObjectVersion}, Client};
 use human_format::Formatter;
 
-use color_eyre::{Result, eyre::{Context, OptionExt}};
+use color_eyre::{Result, eyre::OptionExt};
 
 
 pub struct S3Wrapper {
