@@ -15,7 +15,7 @@ pub struct Stats {
 }
 impl Stats {
     pub fn from_object_versions<T: Borrow<ObjectVersion>>(items: &[T]) -> Self {
-        let size = ByteSize::b(items.iter().map(|o|o.borrow().size.unwrap()).sum::<i64>() as u64);
+        let size = ByteSize::b(items.iter().map(|o|o.borrow().size.expect("Object has no size.")).sum::<i64>() as u64);
         Stats {
             num_objects: items.len(),
             size,
@@ -23,7 +23,7 @@ impl Stats {
     }
 
     pub fn from_objects<T: Borrow<Object>>(items: &[T]) -> Self {
-        let size = ByteSize::b(items.iter().map(|o|o.borrow().size.unwrap()).sum::<i64>() as u64);
+        let size = ByteSize::b(items.iter().map(|o|o.borrow().size.expect("Object has no size.")).sum::<i64>() as u64);
         Stats {
             num_objects: items.len(),
             size,
@@ -49,9 +49,9 @@ impl Display for SizeReport {
                 "{}:\n  {} (current obj: {}, current vers: {}, orphaned vers: {})", 
                 self.url, 
                 self.total.size, 
-                self.versions.as_ref().unwrap().current_objects.size, 
-                self.versions.as_ref().unwrap().current_obj_vers.size, 
-                self.versions.as_ref().unwrap().orphaned_vers.size
+                self.versions.as_ref().expect("No versioning data for current obj.").current_objects.size, 
+                self.versions.as_ref().expect("No versioning data for current vers.").current_obj_vers.size, 
+                self.versions.as_ref().expect("No versioning data for orphaned vers.").orphaned_vers.size
             )
         )
     }
@@ -113,7 +113,7 @@ impl<T: AsRef<SizeReport>> From<T> for CSVSizeReport{
 
 pub async fn build_size_report(s3_location: &S3Location, s3: &S3Wrapper, verbose: bool) -> Result<SizeReport> {
     if s3.is_versioning_enabled(&s3_location.bucket).await? {
-        let versions = s3.get_object_versions(&s3_location.bucket, &s3_location.prefix, verbose).await.unwrap();
+        let versions = s3.get_object_versions(&s3_location.bucket, &s3_location.prefix, verbose).await?;
         
         let total = Stats::from_object_versions(&versions);
         
@@ -121,14 +121,14 @@ pub async fn build_size_report(s3_location: &S3Location, s3: &S3Wrapper, verbose
             t.is_latest.unwrap_or(false)
         }).collect();
         let current_object_keys: HashSet<String> = current.iter().map(|t|{
-            t.key.as_ref().unwrap().clone()
+            t.key.as_ref().expect("S3 API issue No key for object.").clone()
         }).collect();
         let current_objects = Stats::from_object_versions(&current);
 
         let (current, orphaned): (Vec<_>, Vec<_>) = versions.iter()
-            .filter(|t|!t.is_latest.unwrap())
+            .filter(|t|!t.is_latest.expect("S3 API issue is_latest unpopulated."))
             .partition(|t|{
-                t.key().map(|k|current_object_keys.contains(k)).unwrap()
+                t.key().map(|k|current_object_keys.contains(k)).expect("S3 API issue No key for object.")
             });
 
         let current_obj_vers = Stats::from_object_versions(&current);
@@ -147,7 +147,7 @@ pub async fn build_size_report(s3_location: &S3Location, s3: &S3Wrapper, verbose
         Ok(report)
     } else {
         log::warn!("Versioning is NOT active on {}", s3_location);
-        let objects = s3.list_objects_v2(&s3_location.bucket, &s3_location.prefix).await.unwrap();
+        let objects = s3.list_objects_v2(&s3_location.bucket, &s3_location.prefix).await?;
         let stats = Stats::from_objects(&objects);
 
         Ok(SizeReport{
