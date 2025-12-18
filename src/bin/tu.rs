@@ -43,7 +43,7 @@ struct Cli {
 fn main() -> Result<()> {
     color_eyre::install()?;
     let cli = Cli::parse();
-    setup_logging(cli.verbose);
+    setup_logging(cli.verbose)?;
 
     let mut system = System::new();
     let system_memory = system.total_memory() as f32;

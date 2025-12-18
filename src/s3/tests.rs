@@ -1,9 +1,9 @@
-use std::{env, path::{Path, PathBuf}, process::Command};
+use std::{env, path::Path, process::Command};
 
 use aws_sdk_s3::{Client};
 use bytesize::ByteSize;
-use tokio::runtime::{Handle, Runtime};
-use color_eyre::{eyre::WrapErr, Result};
+use tokio::runtime::Runtime;
+use color_eyre::{Result, eyre::{OptionExt, WrapErr}};
 
 use crate::s3::size::{Stats, VersionData};
 
@@ -29,7 +29,7 @@ impl StorageTestHelper {
             };
 
 
-        let runtime = Runtime::new().unwrap();   
+        let runtime = Runtime::new()?;   
         let s3_wrapper = {
             let client = {
                 let config = runtime.block_on(async {aws_config::load_from_env().await});
@@ -160,7 +160,7 @@ fn test_with_versions() -> Result<()> {
         orphaned_vers: Stats { num_objects: 1, size: ByteSize(38) },
     };
 
-    assert_eq!(expected_versions, report.versions.unwrap());
+    assert_eq!(expected_versions, report.versions.ok_or_eyre("Report has no versions.")?);
     
     Ok(())
 }
