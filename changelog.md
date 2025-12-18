@@ -1,9 +1,8 @@
 # Changelog
 
-## [pending] - TBD
+## [0.4.1] - 18/12/2025
 ### Changed
-### Added
-### Fixed
+- Formatting and better propagation of errors using eyre.
 
 ## [0.4.0] - 16/09/2025
 ### Changed
